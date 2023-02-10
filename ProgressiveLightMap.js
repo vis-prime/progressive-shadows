@@ -46,7 +46,7 @@ class ProgressiveLightMap {
     )
 
     // Inject some spicy new logic into a standard phong material
-    this.uvMat = new THREE.MeshPhongMaterial()
+    this.uvMat = new THREE.MeshStandardMaterial()
     this.uvMat.uniforms = {}
     this.uvMat.onBeforeCompile = (shader) => {
       // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
@@ -233,9 +233,9 @@ class ProgressiveLightMap {
         map: this.progressiveLightMap1.texture,
         side: THREE.DoubleSide,
       })
-      this.labelPlane = new THREE.PlaneGeometry(100, 100)
+      this.labelPlane = new THREE.PlaneGeometry(1, 1)
       this.labelMesh = new THREE.Mesh(this.labelPlane, this.labelMaterial)
-      this.labelMesh.position.y = 250
+      this.labelMesh.position.y = 3
       this.lightMapContainers[0].object.parent.add(this.labelMesh)
     }
 

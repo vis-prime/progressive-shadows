@@ -1,8 +1,8 @@
 import "./style.css"
-import threeGlb from "./public/ThreeMesh.glb?url"
+import monkey from "./public/monkey.glb?url"
 
 const app = document.getElementById("app")
-
+import Stats from "three/addons/libs/stats.module"
 import { GUI } from "three/examples/jsm/libs/lil-gui.module.min"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
@@ -15,6 +15,7 @@ import {
   Group,
   LoadingManager,
   Mesh,
+  MeshPhongMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
@@ -27,6 +28,7 @@ const shadowMapRes = 512,
   lightMapRes = 1024,
   lightCount = 8
 let camera,
+  stats,
   scene,
   renderer,
   controls,
@@ -41,7 +43,7 @@ const params = {
   Enable: true,
   "Blur Edges": true,
   "Blend Window": 200,
-  "Light Radius": 50,
+  "Light Radius": 5,
   "Ambient Weight": 0.5,
   "Debug Lightmap": false,
 }
@@ -50,6 +52,8 @@ createGUI()
 animate()
 
 function init() {
+  stats = new Stats()
+  app.appendChild(stats.dom)
   // renderer
   renderer = new WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(window.devicePixelRatio)
@@ -61,10 +65,10 @@ function init() {
   camera = new PerspectiveCamera(
     70,
     window.innerWidth / window.innerHeight,
-    1,
-    1000
+    0.1,
+    300
   )
-  camera.position.set(0, 100, 200)
+  camera.position.set(0, 10, 20)
   camera.name = "Camera"
 
   // scene
@@ -77,7 +81,7 @@ function init() {
 
   // directional lighting "origin"
   lightOrigin = new Group()
-  lightOrigin.position.set(60, 150, 100)
+  lightOrigin.position.set(6, 15, 10)
   scene.add(lightOrigin)
 
   // transform gizmo
@@ -92,14 +96,14 @@ function init() {
   for (let l = 0; l < lightCount; l++) {
     const dirLight = new DirectionalLight(0xffffff, 1.0 / lightCount)
     dirLight.name = "Dir. Light " + l
-    dirLight.position.set(200, 200, 200)
+    dirLight.position.set(2, 2, 2)
     dirLight.castShadow = true
-    dirLight.shadow.camera.near = 100
-    dirLight.shadow.camera.far = 5000
-    dirLight.shadow.camera.right = 150
-    dirLight.shadow.camera.left = -150
-    dirLight.shadow.camera.top = 150
-    dirLight.shadow.camera.bottom = -150
+    dirLight.shadow.camera.near = 0.1
+    dirLight.shadow.camera.far = 100
+    dirLight.shadow.camera.right = 5
+    dirLight.shadow.camera.left = -5
+    dirLight.shadow.camera.top = 5
+    dirLight.shadow.camera.bottom = -5
     dirLight.shadow.mapSize.width = shadowMapRes
     dirLight.shadow.mapSize.height = shadowMapRes
     lightmapObjects.push(dirLight)
@@ -108,59 +112,46 @@ function init() {
 
   // ground
   const groundMesh = new Mesh(
-    new PlaneGeometry(600, 600),
-    new MeshStandardMaterial({ color: 0xffffff, depthWrite: true })
+    new PlaneGeometry(6, 6),
+    new MeshStandardMaterial({
+      color: 0xffffff,
+    })
   )
-  groundMesh.position.y = -0.1
+  groundMesh.position.y = 0
   groundMesh.rotation.x = -Math.PI / 2
   groundMesh.name = "Ground Mesh"
   lightmapObjects.push(groundMesh)
   scene.add(groundMesh)
 
-  // model
-  function loadModel() {
-    object.traverse(function (child) {
+  control2 = new TransformControls(camera, renderer.domElement)
+  control2.addEventListener("dragging-changed", (event) => {
+    controls.enabled = !event.value
+  })
+
+  scene.add(control2)
+
+  // Monkey
+  const loader = new GLTFLoader()
+  loader.load(monkey, (obj) => {
+    obj.scene.traverse((child) => {
       if (child.isMesh) {
-        child.name = "Loaded Mesh"
         child.castShadow = true
         child.receiveShadow = true
-        child.material = new MeshStandardMaterial()
-
+        child.material = new MeshPhongMaterial()
         // This adds the model to the lightmap
         lightmapObjects.push(child)
         progressiveSurfaceMap.addObjectsToLightMap(lightmapObjects)
-      } else {
-        child.layers.disableAll() // Disable Rendering for this
       }
     })
-    scene.add(object)
-    object.scale.set(2, 2, 2)
-    object.position.set(0, -16, 0)
-    control2 = new TransformControls(camera, renderer.domElement)
-    control2.addEventListener("dragging-changed", (event) => {
-      controls.enabled = !event.value
-    })
-    control2.attach(object)
-    scene.add(control2)
+    control2.attach(obj.scene)
+    scene.add(obj.scene)
+
     const lightTarget = new Group()
-    lightTarget.position.set(0, 20, 0)
+    lightTarget.position.set(0, 0.2, 0)
     for (let l = 0; l < dirLights.length; l++) {
       dirLights[l].target = lightTarget
     }
-
-    object.add(lightTarget)
-
-    if (typeof TESTING !== "undefined") {
-      for (let i = 0; i < 300; i++) {
-        render()
-      }
-    }
-  }
-
-  const manager = new LoadingManager(loadModel)
-  const loader = new GLTFLoader(manager)
-  loader.load(threeGlb, (obj) => {
-    object = obj.scene.children[0]
+    obj.scene.add(lightTarget)
   })
 
   // controls
@@ -168,10 +159,10 @@ function init() {
   controls.enableDamping = true // an animation loop is required when either damping or auto-rotation are enabled
   controls.dampingFactor = 0.05
   controls.screenSpacePanning = true
-  controls.minDistance = 100
-  controls.maxDistance = 500
+  controls.minDistance = 0.1
+  controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI / 1.5
-  controls.target.set(0, 100, 0)
+  controls.target.set(0, 0, 0)
   window.addEventListener("resize", onWindowResize)
 }
 
@@ -188,7 +179,7 @@ function createGUI() {
   gui.add(params, "Enable")
   gui.add(params, "Blur Edges")
   gui.add(params, "Blend Window", 1, 500).step(1)
-  gui.add(params, "Light Radius", 0, 200).step(10)
+  gui.add(params, "Light Radius", 0, 100).step(0.1)
   gui.add(params, "Ambient Weight", 0, 1).step(0.1)
   gui.add(params, "Debug Lightmap").onChange(() => {
     progressiveSurfaceMap.showDebugLightmap(params["Debug Lightmap"])
@@ -204,6 +195,7 @@ function onWindowResize() {
 }
 
 function render() {
+  stats.update()
   // Update the inertia on the orbit controls
   controls.update()
 
@@ -213,11 +205,11 @@ function render() {
 
 async function accumulate() {
   // Accumulate Surface Maps
-  for (let index = 0; index < 300; index++) {
+  console.log("Accumulate start...")
+  for (let index = 0; index < 600; index++) {
     await sleep(1)
 
     if (params["Enable"]) {
-      console.log("Accumulate")
       progressiveSurfaceMap.update(
         camera,
         params["Blend Window"],
@@ -240,15 +232,16 @@ async function accumulate() {
         const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
         const phi = 2 * 3.14159 * Math.random()
         dirLights[l].position.set(
-          Math.cos(lambda) * Math.cos(phi) * 300 + object.position.x,
-          Math.abs(Math.cos(lambda) * Math.sin(phi) * 300) +
+          Math.cos(lambda) * Math.cos(phi) * 3 + object.position.x,
+          Math.abs(Math.cos(lambda) * Math.sin(phi) * 3) +
             object.position.y +
-            20,
-          Math.sin(lambda) * 300 + object.position.z
+            2,
+          Math.sin(lambda) * 3 + object.position.z
         )
       }
     }
   }
+  console.log("Accumulate end")
 }
 
 function clear() {
