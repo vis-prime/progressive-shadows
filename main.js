@@ -2,12 +2,24 @@ import "./style.css"
 
 const app = document.getElementById("app")
 
-import * as THREE from "three"
 import { GUI } from "three/examples/jsm/libs/lil-gui.module.min"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
 import { ProgressiveLightMap } from "three/examples/jsm/misc/ProgressiveLightMap"
+import {
+  Color,
+  DirectionalLight,
+  Fog,
+  Group,
+  LoadingManager,
+  Mesh,
+  MeshPhongMaterial,
+  PerspectiveCamera,
+  PlaneGeometry,
+  Scene,
+  WebGLRenderer,
+} from "three"
 
 // ShadowMap + LightMap Res and Number of Directional Lights
 const shadowMapRes = 512,
@@ -19,9 +31,9 @@ let camera,
   controls,
   control,
   control2,
-  object = new THREE.Mesh(),
+  object = new Mesh(),
   lightOrigin = null,
-  progressiveSurfacemap
+  progressiveSurfaceMap
 const dirLights = [],
   lightmapObjects = []
 const params = {
@@ -38,14 +50,14 @@ animate()
 
 function init() {
   // renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer = new WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.shadowMap.enabled = true
   app.appendChild(renderer.domElement)
 
   // camera
-  camera = new THREE.PerspectiveCamera(
+  camera = new PerspectiveCamera(
     70,
     window.innerWidth / window.innerHeight,
     1,
@@ -55,15 +67,14 @@ function init() {
   camera.name = "Camera"
 
   // scene
-  scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x949494)
-  scene.fog = new THREE.Fog(0x949494, 1000, 3000)
+  scene = new Scene()
+  scene.background = new Color(0x949494)
 
   // progressive lightmap
-  progressiveSurfacemap = new ProgressiveLightMap(renderer, lightMapRes)
+  progressiveSurfaceMap = new ProgressiveLightMap(renderer, lightMapRes)
 
   // directional lighting "origin"
-  lightOrigin = new THREE.Group()
+  lightOrigin = new Group()
   lightOrigin.position.set(60, 150, 100)
   scene.add(lightOrigin)
 
@@ -77,7 +88,7 @@ function init() {
 
   // create 8 directional lights to speed up the convergence
   for (let l = 0; l < lightCount; l++) {
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0 / lightCount)
+    const dirLight = new DirectionalLight(0xffffff, 1.0 / lightCount)
     dirLight.name = "Dir. Light " + l
     dirLight.position.set(200, 200, 200)
     dirLight.castShadow = true
@@ -94,9 +105,9 @@ function init() {
   }
 
   // ground
-  const groundMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(600, 600),
-    new THREE.MeshPhongMaterial({ color: 0xffffff, depthWrite: true })
+  const groundMesh = new Mesh(
+    new PlaneGeometry(600, 600),
+    new MeshPhongMaterial({ color: 0xffffff, depthWrite: true })
   )
   groundMesh.position.y = -0.1
   groundMesh.rotation.x = -Math.PI / 2
@@ -111,11 +122,11 @@ function init() {
         child.name = "Loaded Mesh"
         child.castShadow = true
         child.receiveShadow = true
-        child.material = new THREE.MeshPhongMaterial()
+        child.material = new MeshPhongMaterial()
 
         // This adds the model to the lightmap
         lightmapObjects.push(child)
-        progressiveSurfacemap.addObjectsToLightMap(lightmapObjects)
+        progressiveSurfaceMap.addObjectsToLightMap(lightmapObjects)
       } else {
         child.layers.disableAll() // Disable Rendering for this
       }
@@ -129,7 +140,7 @@ function init() {
     })
     control2.attach(object)
     scene.add(control2)
-    const lightTarget = new THREE.Group()
+    const lightTarget = new Group()
     lightTarget.position.set(0, 20, 0)
     for (let l = 0; l < dirLights.length; l++) {
       dirLights[l].target = lightTarget
@@ -144,9 +155,9 @@ function init() {
     }
   }
 
-  const manager = new THREE.LoadingManager(loadModel)
+  const manager = new LoadingManager(loadModel)
   const loader = new GLTFLoader(manager)
-  loader.load("./public/ShadowmappableMesh.glb", function (obj) {
+  loader.load("./public/ShadowMappableMesh.glb", (obj) => {
     object = obj.scene.children[0]
   })
 
@@ -184,14 +195,14 @@ function render() {
 
   // Accumulate Surface Maps
   if (params["Enable"]) {
-    progressiveSurfacemap.update(
+    progressiveSurfaceMap.update(
       camera,
       params["Blend Window"],
       params["Blur Edges"]
     )
 
-    if (!progressiveSurfacemap.firstUpdate) {
-      progressiveSurfacemap.showDebugLightmap(params["Debug Lightmap"])
+    if (!progressiveSurfaceMap.firstUpdate) {
+      progressiveSurfaceMap.showDebugLightmap(params["Debug Lightmap"])
     }
   }
 
