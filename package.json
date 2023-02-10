@@ -1,5 +1,5 @@
 {
-  "name": "vite-project",
+  "name": "progressive-shadows",
   "private": true,
   "version": "0.0.0",
   "scripts": {
@@ -10,5 +10,8 @@
   "devDependencies": {
     "vite": "^2.9.15",
     "vite-plugin-compression": "^0.5.1"
+  },
+  "dependencies": {
+    "three": "^0.149.0"
   }
 }
