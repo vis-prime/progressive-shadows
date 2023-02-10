@@ -158,7 +158,7 @@ function init() {
 
   const manager = new LoadingManager(loadModel)
   const loader = new GLTFLoader(manager)
-  loader.load("./public/ShadowMappableMesh.glb", (obj) => {
+  loader.load("./public/ThreeMesh.glb", (obj) => {
     object = obj.scene.children[0]
   })
 
@@ -173,6 +173,7 @@ function init() {
   controls.target.set(0, 100, 0)
   window.addEventListener("resize", onWindowResize)
 }
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
