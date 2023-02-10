@@ -1,4 +1,5 @@
 import "./style.css"
+import threeGlb from "./public/ThreeMesh.glb?url"
 
 const app = document.getElementById("app")
 
@@ -158,7 +159,7 @@ function init() {
 
   const manager = new LoadingManager(loadModel)
   const loader = new GLTFLoader(manager)
-  loader.load("./public/ThreeMesh.glb", (obj) => {
+  loader.load(threeGlb, (obj) => {
     object = obj.scene.children[0]
   })
 
