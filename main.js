@@ -6,7 +6,7 @@ import { GUI } from "three/examples/jsm/libs/lil-gui.module.min"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
-import { ProgressiveLightMap } from "three/examples/jsm/misc/ProgressiveLightMap"
+import { ProgressiveLightMap } from "./ProgressiveLightMap"
 import {
   Color,
   DirectionalLight,
@@ -14,7 +14,7 @@ import {
   Group,
   LoadingManager,
   Mesh,
-  MeshPhongMaterial,
+  MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
@@ -72,6 +72,7 @@ function init() {
 
   // progressive lightmap
   progressiveSurfaceMap = new ProgressiveLightMap(renderer, lightMapRes)
+  console.log({ progressiveSurfaceMap })
 
   // directional lighting "origin"
   lightOrigin = new Group()
@@ -107,7 +108,7 @@ function init() {
   // ground
   const groundMesh = new Mesh(
     new PlaneGeometry(600, 600),
-    new MeshPhongMaterial({ color: 0xffffff, depthWrite: true })
+    new MeshStandardMaterial({ color: 0xffffff, depthWrite: true })
   )
   groundMesh.position.y = -0.1
   groundMesh.rotation.x = -Math.PI / 2
@@ -122,7 +123,7 @@ function init() {
         child.name = "Loaded Mesh"
         child.castShadow = true
         child.receiveShadow = true
-        child.material = new MeshPhongMaterial()
+        child.material = new MeshStandardMaterial()
 
         // This adds the model to the lightmap
         lightmapObjects.push(child)
@@ -172,15 +173,26 @@ function init() {
   controls.target.set(0, 100, 0)
   window.addEventListener("resize", onWindowResize)
 }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 function createGUI() {
   const gui = new GUI({ name: "Accumulation Settings" })
+  const guiParams = {
+    acc: accumulate,
+    clear: clear,
+  }
   gui.add(params, "Enable")
   gui.add(params, "Blur Edges")
   gui.add(params, "Blend Window", 1, 500).step(1)
   gui.add(params, "Light Radius", 0, 200).step(10)
   gui.add(params, "Ambient Weight", 0, 1).step(0.1)
-  gui.add(params, "Debug Lightmap")
+  gui.add(params, "Debug Lightmap").onChange(() => {
+    progressiveSurfaceMap.showDebugLightmap(params["Debug Lightmap"])
+  })
+  gui.add(guiParams, "acc")
+  gui.add(guiParams, "clear")
 }
 
 function onWindowResize() {
@@ -193,45 +205,53 @@ function render() {
   // Update the inertia on the orbit controls
   controls.update()
 
-  // Accumulate Surface Maps
-  if (params["Enable"]) {
-    progressiveSurfaceMap.update(
-      camera,
-      params["Blend Window"],
-      params["Blur Edges"]
-    )
-
-    if (!progressiveSurfaceMap.firstUpdate) {
-      progressiveSurfaceMap.showDebugLightmap(params["Debug Lightmap"])
-    }
-  }
-
-  // Manually Update the Directional Lights
-  for (let l = 0; l < dirLights.length; l++) {
-    // Sometimes they will be sampled from the target direction
-    // Sometimes they will be uniformly sampled from the upper hemisphere
-    if (Math.random() > params["Ambient Weight"]) {
-      dirLights[l].position.set(
-        lightOrigin.position.x + Math.random() * params["Light Radius"],
-        lightOrigin.position.y + Math.random() * params["Light Radius"],
-        lightOrigin.position.z + Math.random() * params["Light Radius"]
-      )
-    } else {
-      // Uniform Hemispherical Surface Distribution for Ambient Occlusion
-      const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
-      const phi = 2 * 3.14159 * Math.random()
-      dirLights[l].position.set(
-        Math.cos(lambda) * Math.cos(phi) * 300 + object.position.x,
-        Math.abs(Math.cos(lambda) * Math.sin(phi) * 300) +
-          object.position.y +
-          20,
-        Math.sin(lambda) * 300 + object.position.z
-      )
-    }
-  }
-
   // Render Scene
   renderer.render(scene, camera)
+}
+
+async function accumulate() {
+  // Accumulate Surface Maps
+  for (let index = 0; index < 300; index++) {
+    await sleep(1)
+
+    if (params["Enable"]) {
+      console.log("Accumulate")
+      progressiveSurfaceMap.update(
+        camera,
+        params["Blend Window"],
+        params["Blur Edges"]
+      )
+    }
+
+    // Manually Update the Directional Lights
+    for (let l = 0; l < dirLights.length; l++) {
+      // Sometimes they will be sampled from the target direction
+      // Sometimes they will be uniformly sampled from the upper hemisphere
+      if (Math.random() > params["Ambient Weight"]) {
+        dirLights[l].position.set(
+          lightOrigin.position.x + Math.random() * params["Light Radius"],
+          lightOrigin.position.y + Math.random() * params["Light Radius"],
+          lightOrigin.position.z + Math.random() * params["Light Radius"]
+        )
+      } else {
+        // Uniform Hemispherical Surface Distribution for Ambient Occlusion
+        const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
+        const phi = 2 * 3.14159 * Math.random()
+        dirLights[l].position.set(
+          Math.cos(lambda) * Math.cos(phi) * 300 + object.position.x,
+          Math.abs(Math.cos(lambda) * Math.sin(phi) * 300) +
+            object.position.y +
+            20,
+          Math.sin(lambda) * 300 + object.position.z
+        )
+      }
+    }
+  }
+}
+
+function clear() {
+  progressiveSurfaceMap.progressiveLightMap1.dispose()
+  progressiveSurfaceMap.progressiveLightMap2.dispose()
 }
 
 function animate() {
