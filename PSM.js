@@ -1,42 +1,64 @@
-import * as THREE from "three"
+import {
+  DirectionalLight,
+  DoubleSide,
+  FloatType,
+  Group,
+  HalfFloatType,
+  Mesh,
+  MeshBasicMaterial,
+  MeshPhongMaterial,
+  PlaneGeometry,
+  Scene,
+  WebGLRenderer,
+  WebGLRenderTarget,
+} from "three"
 import { potpack } from "three/examples/jsm/libs/potpack.module"
 
-/**
- * Progressive Light Map Accumulator, by [zalo](https://github.com/zalo/)
- *
- * To use, simply construct a `ProgressiveLightMap` object,
- * `plmap.addObjectsToLightMap(object)` an array of semi-static
- * objects and lights to the class once, and then call
- * `plmap.update(camera)` every frame to begin accumulating
- * lighting samples.
- *
- * This should begin accumulating lightmaps which apply to
- * your objects, so you can start jittering lighting to achieve
- * the texture-space effect you're looking for.
- *
- * @param {WebGLRenderer} renderer A WebGL Rendering Context
- * @param {number} res The side-long dimension of you total lightmap
- */
-class ProgressiveLightMap {
-  constructor(renderer, res = 1024) {
+const params = {
+  Enable: true,
+  "Blur Edges": true,
+  "Blend Window": 200,
+  "Light Radius": 2,
+  "Ambient Weight": 0.5,
+  "Debug Lightmap": false,
+}
+
+export class PSM {
+  /**
+   * PSM
+   * @param {WebGLRenderer} renderer
+   */
+  constructor(renderer, camera, res = 1024) {
+    this.camera = camera
     this.renderer = renderer
     this.res = res
     this.lightMapContainers = []
     this.compiled = false
-    this.scene = new THREE.Scene()
+    this.scene = new Scene()
     this.scene.background = null
-    this.tinyTarget = new THREE.WebGLRenderTarget(1, 1)
+    this.tinyTarget = new WebGLRenderTarget(1, 1)
     this.buffer1Active = false
     this.firstUpdate = true
     this.warned = false
+    this.dirLights = []
+    this.lightCount = 8
+    this.shadowMapRes = 512
+
+    this.object = null
+
+    /**
+     * light position control
+     * @type {Group}
+     */
+    this.lightOrigin = null
 
     // Create the Progressive LightMap Texture
-    const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? THREE.HalfFloatType : THREE.FloatType
-    this.progressiveLightMap1 = new THREE.WebGLRenderTarget(this.res, this.res, { type: format })
-    this.progressiveLightMap2 = new THREE.WebGLRenderTarget(this.res, this.res, { type: format })
+    const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? HalfFloatType : FloatType
+    this.progressiveLightMap1 = new WebGLRenderTarget(this.res, this.res, { type: format })
+    this.progressiveLightMap2 = new WebGLRenderTarget(this.res, this.res, { type: format })
 
     // Inject some spicy new logic into a standard phong material
-    this.uvMat = new THREE.MeshStandardMaterial()
+    this.uvMat = new MeshPhongMaterial()
     this.uvMat.uniforms = {}
     this.uvMat.onBeforeCompile = (shader) => {
       // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
@@ -80,7 +102,7 @@ class ProgressiveLightMap {
 
     for (let ob = 0; ob < objects.length; ob++) {
       const object = objects[ob]
-
+      console.log(object.name)
       // If this object is a light, simply add it to the internal scene
       if (object.isLight) {
         this.scene.attach(object)
@@ -134,6 +156,61 @@ class ProgressiveLightMap {
       objects[box.index].geometry.setAttribute("uv2", uv2)
       objects[box.index].geometry.getAttribute("uv2").needsUpdate = true
     })
+  }
+
+  /**
+   * INTERNAL Creates the Blurring Plane
+   * @param {number} res The square resolution of this object's lightMap.
+   * @param {WebGLRenderTexture} lightMap The lightmap to initialize the plane with.
+   */
+  _initializeBlurPlane(res, lightMap = null) {
+    const blurMaterial = new MeshBasicMaterial()
+    blurMaterial.uniforms = {
+      previousShadowMap: { value: null },
+      pixelOffset: { value: 1.0 / res },
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: 3.0,
+    }
+    blurMaterial.onBeforeCompile = (shader) => {
+      // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
+      shader.vertexShader = "#define USE_UV\n" + shader.vertexShader.slice(0, -1) + "	gl_Position = vec4((uv - 0.5) * 2.0, 1.0, 1.0); }"
+
+      // Fragment Shader: Set Pixels to 9-tap box blur the current frame's Shadows
+      const bodyStart = shader.fragmentShader.indexOf("void main() {")
+      shader.fragmentShader =
+        "#define USE_UV\n" +
+        shader.fragmentShader.slice(0, bodyStart) +
+        "	uniform sampler2D previousShadowMap;\n	uniform float pixelOffset;\n" +
+        shader.fragmentShader.slice(bodyStart - 1, -1) +
+        `	gl_FragColor.rgb = (
+									texture2D(previousShadowMap, vUv + vec2( pixelOffset,  0.0        )).rgb +
+									texture2D(previousShadowMap, vUv + vec2( 0.0        ,  pixelOffset)).rgb +
+									texture2D(previousShadowMap, vUv + vec2( 0.0        , -pixelOffset)).rgb +
+									texture2D(previousShadowMap, vUv + vec2(-pixelOffset,  0.0        )).rgb +
+									texture2D(previousShadowMap, vUv + vec2( pixelOffset,  pixelOffset)).rgb +
+									texture2D(previousShadowMap, vUv + vec2(-pixelOffset,  pixelOffset)).rgb +
+									texture2D(previousShadowMap, vUv + vec2( pixelOffset, -pixelOffset)).rgb +
+									texture2D(previousShadowMap, vUv + vec2(-pixelOffset, -pixelOffset)).rgb)/8.0;
+				}`
+
+      // Set the LightMap Accumulation Buffer
+      shader.uniforms.previousShadowMap = { value: lightMap.texture }
+      shader.uniforms.pixelOffset = { value: 0.5 / res }
+      blurMaterial.uniforms = shader.uniforms
+
+      // Set the new Shader to this
+      blurMaterial.userData.shader = shader
+
+      this.compiled = true
+    }
+
+    this.blurringPlane = new Mesh(new PlaneGeometry(1, 1), blurMaterial)
+    this.blurringPlane.name = "Blurring Plane"
+    this.blurringPlane.frustumCulled = false
+    this.blurringPlane.renderOrder = 0
+    this.blurringPlane.material.depthWrite = false
+    this.scene.add(this.blurringPlane)
   }
 
   /**
@@ -214,12 +291,12 @@ class ProgressiveLightMap {
     }
 
     if (this.labelMesh == null) {
-      this.labelMaterial = new THREE.MeshBasicMaterial({
+      this.labelMaterial = new MeshBasicMaterial({
         map: this.progressiveLightMap1.texture,
-        side: THREE.DoubleSide,
+        side: DoubleSide,
       })
-      this.labelPlane = new THREE.PlaneGeometry(1, 1)
-      this.labelMesh = new THREE.Mesh(this.labelPlane, this.labelMaterial)
+      this.labelPlane = new PlaneGeometry(1, 1)
+      this.labelMesh = new Mesh(this.labelPlane, this.labelMaterial)
       this.labelMesh.position.y = 3
       this.lightMapContainers[0].object.parent.add(this.labelMesh)
     }
@@ -231,60 +308,60 @@ class ProgressiveLightMap {
     this.labelMesh.visible = visible
   }
 
-  /**
-   * INTERNAL Creates the Blurring Plane
-   * @param {number} res The square resolution of this object's lightMap.
-   * @param {WebGLRenderTexture} lightMap The lightmap to initialize the plane with.
-   */
-  _initializeBlurPlane(res, lightMap = null) {
-    const blurMaterial = new THREE.MeshBasicMaterial()
-    blurMaterial.uniforms = {
-      previousShadowMap: { value: null },
-      pixelOffset: { value: 1.0 / res },
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: 3.0,
+  addGui(gui) {
+    gui.add(params, "Enable")
+    gui.add(params, "Blur Edges")
+    gui.add(params, "Blend Window", 1, 500).step(1)
+    gui.add(params, "Light Radius", 0, 10).step(0.1)
+    gui.add(params, "Ambient Weight", 0, 1).step(0.1)
+    gui.add(params, "Debug Lightmap").onChange(() => {
+      this.showDebugLightmap(params["Debug Lightmap"])
+    })
+    gui.add(this, "accumulate")
+    gui.add(this, "clear")
+  }
+
+  async accumulate() {
+    // Accumulate Surface Maps
+    console.log("Accumulate start...")
+    for (let index = 0; index < 600; index++) {
+      await sleep(2)
+
+      if (params["Enable"]) {
+        this.update(this.camera, params["Blend Window"], params["Blur Edges"])
+      }
+
+      // Manually Update the Directional Lights
+      for (let l = 0; l < this.dirLights.length; l++) {
+        // Sometimes they will be sampled from the target direction
+        // Sometimes they will be uniformly sampled from the upper hemisphere
+        if (Math.random() > params["Ambient Weight"]) {
+          this.dirLights[l].position.set(
+            this.lightOrigin.position.x + Math.random() * params["Light Radius"],
+            this.lightOrigin.position.y + Math.random() * params["Light Radius"],
+            this.lightOrigin.position.z + Math.random() * params["Light Radius"]
+          )
+        } else {
+          // Uniform Hemispherical Surface Distribution for Ambient Occlusion
+          const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
+          const phi = 2 * 3.14159 * Math.random()
+          this.dirLights[l].position.set(
+            Math.cos(lambda) * Math.cos(phi) * 3 + this.object.position.x,
+            Math.abs(Math.cos(lambda) * Math.sin(phi) * 3) + this.object.position.y + 2,
+            Math.sin(lambda) * 3 + this.object.position.z
+          )
+        }
+      }
     }
-    blurMaterial.onBeforeCompile = (shader) => {
-      // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
-      shader.vertexShader = "#define USE_UV\n" + shader.vertexShader.slice(0, -1) + "	gl_Position = vec4((uv - 0.5) * 2.0, 1.0, 1.0); }"
+    console.log("Accumulate end")
+  }
 
-      // Fragment Shader: Set Pixels to 9-tap box blur the current frame's Shadows
-      const bodyStart = shader.fragmentShader.indexOf("void main() {")
-      shader.fragmentShader =
-        "#define USE_UV\n" +
-        shader.fragmentShader.slice(0, bodyStart) +
-        "	uniform sampler2D previousShadowMap;\n	uniform float pixelOffset;\n" +
-        shader.fragmentShader.slice(bodyStart - 1, -1) +
-        `	gl_FragColor.rgb = (
-									texture2D(previousShadowMap, vUv + vec2( pixelOffset,  0.0        )).rgb +
-									texture2D(previousShadowMap, vUv + vec2( 0.0        ,  pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2( 0.0        , -pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2(-pixelOffset,  0.0        )).rgb +
-									texture2D(previousShadowMap, vUv + vec2( pixelOffset,  pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2(-pixelOffset,  pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2( pixelOffset, -pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2(-pixelOffset, -pixelOffset)).rgb)/8.0;
-				}`
-
-      // Set the LightMap Accumulation Buffer
-      shader.uniforms.previousShadowMap = { value: lightMap.texture }
-      shader.uniforms.pixelOffset = { value: 0.5 / res }
-      blurMaterial.uniforms = shader.uniforms
-
-      // Set the new Shader to this
-      blurMaterial.userData.shader = shader
-
-      this.compiled = true
-    }
-
-    this.blurringPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blurMaterial)
-    this.blurringPlane.name = "Blurring Plane"
-    this.blurringPlane.frustumCulled = false
-    this.blurringPlane.renderOrder = 0
-    this.blurringPlane.material.depthWrite = false
-    this.scene.add(this.blurringPlane)
+  clear() {
+    this.progressiveLightMap1.dispose()
+    this.progressiveLightMap2.dispose()
   }
 }
 
-export { ProgressiveLightMap }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
