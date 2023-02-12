@@ -2,6 +2,7 @@ import "./style.css"
 import monkeyURL from "./public/monkey.glb?url"
 
 const app = document.getElementById("app")
+import { version } from "./package.json"
 import Stats from "three/addons/libs/stats.module"
 import { GUI } from "three/examples/jsm/libs/lil-gui.module.min"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
@@ -35,7 +36,7 @@ animate()
 initProgressiveShadows()
 
 function init() {
-  gui = new GUI({ name: "PSM" })
+  gui = new GUI({ name: "PSM " + version })
   stats = new Stats()
   app.appendChild(stats.dom)
   // renderer
