@@ -29,14 +29,16 @@ import { PSM } from "./ProgressiveShadowMap"
 
 let stats, renderer, camera, scene, controls, gui
 
+let groundMesh, sphere, monkeyObj
+
+let shadowMapObjects = []
+
 init()
 
 animate()
 
-initProgressiveShadows()
-
 function init() {
-  gui = new GUI({ name: "PSM " + version })
+  gui = new GUI({ title: "PSM " + version })
   stats = new Stats()
   app.appendChild(stats.dom)
   // renderer
@@ -75,6 +77,8 @@ function init() {
   controls.maxPolarAngle = Math.PI / 1.5
   controls.target.set(0, 0, 0)
   window.addEventListener("resize", onWindowResize)
+
+  addModels()
 }
 
 function onWindowResize() {
@@ -97,25 +101,22 @@ function animate() {
   render()
 }
 
-async function initProgressiveShadows() {
-  const shadowMapObjects = []
-
+async function addModels() {
   // ground plane
-  const groundMesh = new Mesh(
+  groundMesh = new Mesh(
     new PlaneGeometry(6, 6),
     new MeshStandardMaterial({
       color: 0xffffff,
       name: "groundMat",
     })
   )
-  shadowMapObjects.push(groundMesh)
   groundMesh.rotation.x = -Math.PI / 2
   groundMesh.name = "groundMesh"
   groundMesh.receiveShadow = true
   scene.add(groundMesh)
 
   // Sphere
-  const sphere = new Mesh(
+  sphere = new Mesh(
     new SphereGeometry(0.5, 12, 12),
     new MeshStandardMaterial({ name: "sphereMat", color: 0xc0ffee, roughness: 0, metalness: 1 })
   )
@@ -123,14 +124,13 @@ async function initProgressiveShadows() {
   sphere.castShadow = true
   sphere.receiveShadow = true
 
-  shadowMapObjects.push(sphere)
   sphere.position.set(1, 0.6, 1)
   scene.add(sphere)
 
   // Monkey !
   const loader = new GLTFLoader()
   const gltf = await loader.loadAsync(monkeyURL)
-  const monkeyObj = gltf.scene
+  monkeyObj = gltf.scene
   monkeyObj.name = "monkey"
   monkeyObj.traverse((child) => {
     if (child.isMesh) {
@@ -142,6 +142,13 @@ async function initProgressiveShadows() {
   })
   scene.add(monkeyObj)
 
+  shadowMapObjects.push(groundMesh)
+  shadowMapObjects.push(sphere)
+
+  initProgressiveShadows()
+}
+
+async function initProgressiveShadows() {
   // light position gizmo
   const control = new TransformControls(camera, renderer.domElement)
   control.name = "lightOrigin control"
