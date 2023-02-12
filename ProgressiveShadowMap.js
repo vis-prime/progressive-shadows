@@ -1,3 +1,4 @@
+import { MeshLambertMaterial } from "three"
 import {
   DirectionalLight,
   DoubleSide,
@@ -13,6 +14,7 @@ import {
   WebGLRenderTarget,
 } from "three"
 import { potpack } from "three/examples/jsm/libs/potpack.module"
+import { DiscardMaterial } from "./DiscardMaterial"
 
 const params = {
   Enable: true,
@@ -82,27 +84,30 @@ export class PSM {
 
     // Create the Progressive LightMap Texture
     const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? HalfFloatType : FloatType
-    this.progressiveLightMap1 = new WebGLRenderTarget(this.res, this.res, { type: format })
-    this.progressiveLightMap2 = new WebGLRenderTarget(this.res, this.res, { type: format })
+    this.progressiveLightMap1 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
+    this.progressiveLightMap2 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
 
     // Inject some spicy new logic into a standard phong material
-    this.uvMat = new MeshPhongMaterial()
-    this.uvMat.uniforms = {}
-    this.uvMat.onBeforeCompile = (shader) => {
+    this.discardMat = new DiscardMaterial()
+    this.targetMat = new MeshLambertMaterial({ fog: false })
+    this.previousShadowMap = { value: this.progressiveLightMap1.texture }
+    this.averagingWindow = { value: 100 }
+    this.targetMat.uniforms = {}
+    this.targetMat.onBeforeCompile = (shader) => {
       // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
       shader.vertexShader =
-        "#define USE_LIGHTMAP\n" + shader.vertexShader.slice(0, -1) + "	gl_Position = vec4((uv2 - 0.5) * 2.0, 1.0, 1.0); }"
+        "varying vec2 vUv;\n" + shader.vertexShader.slice(0, -1) + "vUv = uv; gl_Position = vec4((uv - 0.5) * 2.0, 1.0, 1.0); }"
 
       // Fragment Shader: Set Pixels to average in the Previous frame's Shadows
       const bodyStart = shader.fragmentShader.indexOf("void main() {")
       shader.fragmentShader =
-        "varying vec2 vUv2;\n" +
+        "varying vec2 vUv;\n" +
         shader.fragmentShader.slice(0, bodyStart) +
-        "	uniform sampler2D previousShadowMap;\n	uniform float averagingWindow;\n" +
+        "uniform sampler2D previousShadowMap;\n	uniform float averagingWindow;\n" +
         shader.fragmentShader.slice(bodyStart - 1, -1) +
-        `\nvec3 texelOld = texture2D(previousShadowMap, vUv2).rgb;
-				gl_FragColor.rgb = mix(texelOld, gl_FragColor.rgb, 1.0/averagingWindow);
-			}`
+        `\nvec3 texelOld = texture2D(previousShadowMap, vUv).rgb;
+        gl_FragColor.rgb = mix(texelOld, gl_FragColor.rgb, 1.0/ averagingWindow);
+      }`
 
       // Set the Previous Frame's Texture Buffer and Averaging Window
       shader.uniforms.previousShadowMap = {
@@ -110,10 +115,10 @@ export class PSM {
       }
       shader.uniforms.averagingWindow = { value: 100 }
 
-      this.uvMat.uniforms = shader.uniforms
+      this.targetMat.uniforms = shader.uniforms
 
       // Set the new Shader to this
-      this.uvMat.userData.shader = shader
+      this.targetMat.userData.shader = shader
 
       this.compiled = true
     }
@@ -153,7 +158,9 @@ export class PSM {
         object.castShadow = true
         object.receiveShadow = true
         object.renderOrder = 1000 + ob
-
+        const uv = object.geometry.getAttribute("uv")
+        object.geometry.setAttribute("uv2", uv)
+        object.geometry.getAttribute("uv2").needsUpdate = true
         // Prepare UV boxes for potpack
         // TODO: Size these by object surface area
 
@@ -171,19 +178,6 @@ export class PSM {
 
       this.compiled = false
     }
-
-    // Pack the objects' lightmap UVs into the same global space
-    const dimensions = potpack(this.uv_boxes)
-    this.uv_boxes.forEach((box) => {
-      const uv2 = objects[box.index].geometry.getAttribute("uv").clone()
-      for (let i = 0; i < uv2.array.length; i += uv2.itemSize) {
-        uv2.array[i] = (uv2.array[i] + box.x + padding) / dimensions.w
-        uv2.array[i + 1] = (uv2.array[i + 1] + box.y + padding) / dimensions.h
-      }
-
-      objects[box.index].geometry.setAttribute("uv2", uv2)
-      objects[box.index].geometry.getAttribute("uv2").needsUpdate = true
-    })
   }
 
   /**
@@ -273,8 +267,8 @@ export class PSM {
 
     // Set each object's material to the UV Unwrapped Surface Mapping Version
     for (let l = 0; l < this.lightMapContainers.length; l++) {
-      this.uvMat.uniforms.averagingWindow = { value: blendWindow }
-      this.lightMapContainers[l].object.material = this.uvMat
+      this.targetMat.uniforms.averagingWindow = { value: blendWindow }
+      this.lightMapContainers[l].object.material = this.targetMat
       this.lightMapContainers[l].object.oldFrustumCulled = this.lightMapContainers[l].object.frustumCulled
       this.lightMapContainers[l].object.frustumCulled = false
     }
@@ -285,7 +279,7 @@ export class PSM {
 
     // Render the object's surface maps
     this.renderer.setRenderTarget(activeMap)
-    this.uvMat.uniforms.previousShadowMap = { value: inactiveMap.texture }
+    this.targetMat.uniforms.previousShadowMap = { value: inactiveMap.texture }
     this.blurringPlane.material.uniforms.previousShadowMap = {
       value: inactiveMap.texture,
     }
