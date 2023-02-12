@@ -17,7 +17,7 @@ import { potpack } from "three/examples/jsm/libs/potpack.module"
 const params = {
   Enable: true,
   "Blur Edges": true,
-  "Blend Window": 200,
+  "Blend Window": 100,
   "Light Radius": 2,
   "Ambient Weight": 0.5,
   "Debug Lightmap": false,
@@ -46,11 +46,39 @@ export class PSM {
 
     this.object = null
 
+    // create 8 directional lights to speed up the convergence
+    for (let l = 0; l < this.lightCount; l++) {
+      const dirLight = new DirectionalLight(0xffffff, 1.0 / this.lightCount)
+      dirLight.name = "Dir. Light " + l
+      dirLight.position.set(2, 2, 2)
+      dirLight.castShadow = true
+      dirLight.shadow.camera.near = 0.1
+      dirLight.shadow.camera.far = 100
+      dirLight.shadow.camera.right = 5
+      dirLight.shadow.camera.left = -5
+      dirLight.shadow.camera.top = 5
+      dirLight.shadow.camera.bottom = -5
+      dirLight.shadow.mapSize.width = this.shadowMapRes
+      dirLight.shadow.mapSize.height = this.shadowMapRes
+      this.dirLights.push(dirLight)
+      this.scene.add(dirLight)
+    }
+
     /**
      * light position control
      * @type {Group}
      */
-    this.lightOrigin = null
+    this.lightOrigin = new Group()
+    this.lightOrigin.name = "lightOrigin"
+    this.lightOrigin.position.set(5, 5, 5)
+    this.scene.add(this.lightOrigin)
+
+    const lightTarget = new Group()
+    lightTarget.position.set(0, 0, 0)
+    for (let l = 0; l < this.dirLights.length; l++) {
+      this.dirLights[l].target = lightTarget
+    }
+    this.scene.add(lightTarget)
 
     // Create the Progressive LightMap Texture
     const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? HalfFloatType : FloatType
