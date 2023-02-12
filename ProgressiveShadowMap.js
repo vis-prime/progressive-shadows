@@ -16,11 +16,11 @@ import { potpack } from "three/examples/jsm/libs/potpack.module"
 
 const params = {
   Enable: true,
-  "Blur Edges": true,
-  "Blend Window": 100,
-  "Light Radius": 2,
-  "Ambient Weight": 0.5,
-  "Debug Lightmap": false,
+  blurEdges: true,
+  blendWindow: 100,
+  lightRadius: 2,
+  ambientWeight: 0.5,
+  debugMap: false,
 }
 
 export class PSM {
@@ -338,36 +338,35 @@ export class PSM {
 
   addGui(gui) {
     gui.add(params, "Enable")
-    gui.add(params, "Blur Edges")
-    gui.add(params, "Blend Window", 1, 500).step(1)
-    gui.add(params, "Light Radius", 0, 10).step(0.1)
-    gui.add(params, "Ambient Weight", 0, 1).step(0.1)
-    gui.add(params, "Debug Lightmap").onChange(() => {
-      this.showDebugLightmap(params["Debug Lightmap"])
+    gui.add(params, "blurEdges")
+    gui.add(params, "blendWindow", 1, 500).step(1)
+    gui.add(params, "lightRadius", 0, 10).step(0.1)
+    gui.add(params, "ambientWeight", 0, 1).step(0.1)
+    gui.add(params, "debugMap").onChange(() => {
+      this.showDebugLightmap(params.debugMap)
     })
     gui.add(this, "accumulate")
     gui.add(this, "clear")
   }
 
   async accumulate() {
+    if (!params.Enable) return
     // Accumulate Surface Maps
     console.log("Accumulate start...")
     for (let index = 0; index < 600; index++) {
       await sleep(2)
 
-      if (params["Enable"]) {
-        this.update(this.camera, params["Blend Window"], params["Blur Edges"])
-      }
+      this.update(this.camera, params.blendWindow, params.blurEdges)
 
       // Manually Update the Directional Lights
       for (let l = 0; l < this.dirLights.length; l++) {
         // Sometimes they will be sampled from the target direction
         // Sometimes they will be uniformly sampled from the upper hemisphere
-        if (Math.random() > params["Ambient Weight"]) {
+        if (Math.random() > params.ambientWeight) {
           this.dirLights[l].position.set(
-            this.lightOrigin.position.x + Math.random() * params["Light Radius"],
-            this.lightOrigin.position.y + Math.random() * params["Light Radius"],
-            this.lightOrigin.position.z + Math.random() * params["Light Radius"]
+            this.lightOrigin.position.x + Math.random() * params.lightRadius,
+            this.lightOrigin.position.y + Math.random() * params.lightRadius,
+            this.lightOrigin.position.z + Math.random() * params.lightRadius
           )
         } else {
           // Uniform Hemispherical Surface Distribution for Ambient Occlusion

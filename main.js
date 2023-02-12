@@ -4,7 +4,7 @@ import monkeyURL from "./public/monkey.glb?url"
 const app = document.getElementById("app")
 import { version } from "./package.json"
 import Stats from "three/addons/libs/stats.module"
-import { GUI } from "three/examples/jsm/libs/lil-gui.module.min"
+import { GUI } from "lil-gui"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader"
 

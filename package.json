@@ -12,9 +12,10 @@
     "vite-plugin-compression": "^0.5.1"
   },
   "dependencies": {
+    "lil-gui": "^0.18.0",
     "three": "^0.149.0"
   },
-  "prettier":{
+  "prettier": {
     "printWidth": 140,
     "semi": false
   }
