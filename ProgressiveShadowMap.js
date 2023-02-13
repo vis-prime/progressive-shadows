@@ -1,5 +1,7 @@
-import { AddEquation } from "three"
+import { AddEquation, ShaderMaterial, ShadowMaterial } from "three"
 import { ReverseSubtractEquation } from "three"
+import { Color } from "three"
+import { MathUtils } from "three"
 import { SubtractEquation } from "three"
 import { MinEquation } from "three"
 import {
@@ -29,6 +31,7 @@ import {
   WebGLRenderTarget,
   MeshStandardMaterial,
 } from "three"
+import { shaderMaterial } from "./shaderMaterial"
 
 const params = {
   enable: true,
@@ -36,7 +39,9 @@ const params = {
   blendWindow: 100,
   lightRadius: 2,
   ambientWeight: 0.5,
+  opacity: 0.8,
   debugMap: false,
+  updateWaitTime: 10,
 }
 
 export class PSM {
@@ -63,6 +68,10 @@ export class PSM {
     this.shadowMapRes = 512
     this.killCompute = false
     this.isComputing = false
+    this.shadowColor = new Color(1, 0, 0)
+    this.clearColor = new Color()
+    this.clearAlpha = 0
+    this.progress = 0
 
     // create 8 directional lights to speed up the convergence
     for (let l = 0; l < this.lightCount; l++) {
@@ -70,6 +79,7 @@ export class PSM {
       dirLight.name = "Dir. Light " + l
       dirLight.position.set(2, 2, 2)
       dirLight.castShadow = true
+      dirLight.shadow.bias = 0.1
       dirLight.shadow.camera.near = 0.1
       dirLight.shadow.camera.far = 100
       dirLight.shadow.camera.right = 5
@@ -106,44 +116,12 @@ export class PSM {
     // create plane to catch shadows
     this.shadowCatcherMesh = new Mesh(
       new PlaneGeometry(6, 6),
-      new MeshBasicMaterial({
-        color: 0xffffff,
-        name: "shadow_catcher_mat",
+      new SoftShadowMaterial({
+        color: this.shadowColor,
         map: this.progressiveLightMap2.texture,
-        transparent: true,
-        toneMapped: false,
-        fog: false,
-        blending: CustomBlending,
-
-        // blendEquation: AddEquation,
-        // blendEquation: SubtractEquation,
-        // blendEquation: ReverseSubtractEquation,
-        blendEquation: MinEquation,
-        // blendEquation: MaxEquation,
-
-        // blendSrc: ZeroFactor,
-        // blendSrc: OneFactor,
-        // blendSrc: SrcColorFactor,
-        // blendSrc: OneMinusSrcColorFactor,
-        // blendSrc: SrcAlphaFactor,
-        // blendSrc: OneMinusSrcAlphaFactor,
-        // blendSrc: DstAlphaFactor,
-        // blendSrc: OneMinusDstAlphaFactor,
-        // blendSrc: DstColorFactor,
-        // blendSrc: OneMinusDstColorFactor,
-
-        // blendDst: ZeroFactor,
-        // blendDst: OneFactor,
-        // blendDst: SrcColorFactor,
-        // blendDst: OneMinusSrcColorFactor,
-        // blendDst: SrcAlphaFactor,
-        // blendDst: OneMinusSrcAlphaFactor,
-        // blendDst: DstAlphaFactor,
-        // blendDst: OneMinusDstAlphaFactor,
-        // blendDst: DstColorFactor,
-        // blendDst: OneMinusDstColorFactor,
       })
     )
+
     this.shadowCatcherMesh.renderOrder = 1000
 
     this.shadowCatcherMesh.rotation.x = -Math.PI / 2
@@ -186,7 +164,6 @@ export class PSM {
 
       // Set the new Shader to this
       this.targetMat.userData.shader = shader
-
       this.compiled = true
     }
   }
@@ -214,29 +191,12 @@ export class PSM {
     }
   }
 
-  connectShadowCatcher(object) {
-    // Apply the lightmap to the object as diffuse image (does not need uv2)
-    object.material.map = this.progressiveLightMap2.texture
-
-    // Apply the lightmap to the object  as diffuse image (needs uv2)
-    // object.material.lightMap = this.progressiveLightMap2.texture
-    // object.material.dithering = true
-    // object.geometry.setAttribute("uv2", object.geometry.getAttribute("uv")) // clone uv1 as uv2
-
-    object.renderOrder = 1000
-
-    this.lightMapContainers.push({
-      basicMat: object.material,
-      object: object,
-    })
-  }
-
   /**
    * This function renders each mesh one at a time into their respective surface maps
    * @param {Camera} camera Standard Rendering Camera
    * @param {number} blendWindow When >1, samples will accumulate over time.
    */
-  update(camera, blendWindow = 100) {
+  renderOnLightMap(camera, blendWindow = 100) {
     // Steal the Object3D from the real world to our special dimension
     for (let l = 0; l < this.lightMapContainers.length; l++) {
       this.lightMapContainers[l].object.oldScene = this.lightMapContainers[l].object.parent
@@ -338,39 +298,105 @@ export class PSM {
     }
   }
 
-  async accumulate() {
+  async update() {
     if (!params.enable) return
 
-    if (this.isComputing) {
-      console.log("Accumulate already in progress")
-      return
-    }
-
-    // Accumulate Surface Maps
-    console.log("Accumulate start...")
-    for (let index = 0; index < params.frames; index++) {
-      if (this.killCompute) {
-        this.killCompute = false
-        break
-      }
-
-      this.isComputing = true
-      await sleep(10)
-
-      this.update(this.camera, params.blendWindow)
-      this.randomiseLights()
-    }
+    this.clear()
+    this.accumulate()
     console.log("Accumulate end")
+  }
+
+  async accumulate() {
+    // Accumulate Surface Maps
+    const date = Date.now()
+    this.isComputing = true
+    for (let index = 0; index < params.frames; index++) {
+      console.log(date, "index")
+      this.shadowCatcherMesh.material.opacity = Math.max(
+        0,
+        MathUtils.mapLinear(index, params.frames / 1.5, params.frames - 1, 0, params.opacity)
+      )
+
+      await sleep(params.updateWaitTime)
+
+      this.renderOnLightMap(this.camera, params.blendWindow)
+      this.randomiseLights()
+      this.progress = MathUtils.mapLinear(index, 0, params.frames - 1, 0, 100)
+    }
     this.isComputing = false
   }
 
   clear() {
-    if (this.isComputing) this.killCompute = true
-    this.progressiveLightMap1.dispose()
-    this.progressiveLightMap2.dispose()
+    console.log("clear")
+
+    this.renderer.getClearColor(this.clearColor)
+    this.clearAlpha = this.renderer.getClearAlpha()
+    this.renderer.setClearColor("black", 1) // setting to any other color/alpha will decrease shadow's impact when accumulating
+    this.renderer.setRenderTarget(this.progressiveLightMap1)
+    this.renderer.clear()
+    this.renderer.setRenderTarget(this.progressiveLightMap2)
+    this.renderer.clear()
+    this.renderer.setRenderTarget(null)
+    this.renderer.setClearColor(this.clearColor, this.clearAlpha)
+
+    this.shadowCatcherMesh.material.opacity = 0
   }
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+// Create a new custom material
+var shadowOnlyMaterial = shaderMaterial(
+  {
+    transparent: true,
+    map: null,
+    // alphaTest: 0.5,
+  },
+  `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+    }
+  `,
+  `
+   uniform sampler2D map;
+    varying vec2 vUv;
+    void main() {
+      float grey = texture2D(map, vUv).g;
+      gl_FragColor = vec4(grey, grey, grey, 1.0 - grey);
+    }
+  `
+)
+
+const SoftShadowMaterial = shaderMaterial(
+  {
+    transparent: true,
+    color: null,
+    alphaTest: 1.0,
+    opacity: 0.0,
+    map: null,
+    depthWrite: false,
+    toneMapped: false,
+    blend: 2.0,
+  },
+  `varying vec2 vUv;
+   void main() {
+     gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.);
+     vUv = uv;
+   }`,
+  `varying vec2 vUv;
+   uniform sampler2D map;
+   uniform vec3 color;
+   uniform float opacity;
+   uniform float alphaTest;
+   uniform float blend;
+   void main() {
+     vec4 sampledDiffuseColor = texture2D(map, vUv);
+     gl_FragColor = vec4(color * sampledDiffuseColor.r * blend, max(0.0, (1.0 - (sampledDiffuseColor.r + sampledDiffuseColor.g + sampledDiffuseColor.b) / alphaTest)) * opacity);
+     #include <tonemapping_fragment>
+     #include <encodings_fragment>
+   }`
+)
