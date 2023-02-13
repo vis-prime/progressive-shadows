@@ -3,20 +3,22 @@ import monkeyURL from "./public/monkey.glb?url"
 
 const app = document.getElementById("app")
 import { version } from "./package.json"
-import Stats from "three/addons/libs/stats.module"
+import Stats from "three/examples/jsm/libs/stats.module"
 import { GUI } from "lil-gui"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader"
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
-import moonless_golf_1k from "/public/moonless_golf_1k.hdr?url"
+import hdriUrl from "/public/aristea_wreck_1k.hdr?url"
 
 import {
+  ACESFilmicToneMapping,
   Color,
   EquirectangularReflectionMapping,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
@@ -26,10 +28,15 @@ import {
   WebGLRenderer,
 } from "three"
 import { PSM } from "./ProgressiveShadowMap"
+import { AccumulativeShadows } from "./AccumulativeShadows"
 
 let stats, renderer, camera, scene, controls, gui
 
-let groundMesh, sphere, monkeyObj
+let sphere, monkeyObj
+
+const params = {
+  envMapIntensity: 1,
+}
 
 let shadowMapObjects = []
 
@@ -37,8 +44,43 @@ init()
 
 animate()
 
+// doAccumulate()
+doPSM()
+async function doAccumulate() {
+  const accShadows = new AccumulativeShadows(renderer, camera, scene, gui)
+
+  // Sphere
+  sphere = new Mesh(
+    new SphereGeometry(0.5, 16, 16),
+    new MeshStandardMaterial({ name: "sphereMat", color: 0xc0ffee, roughness: 0.1, metalness: 1 })
+  )
+  sphere.name = "sphere"
+  sphere.castShadow = true
+  sphere.receiveShadow = true
+  sphere.position.set(2, 0.6, 2)
+  scene.add(sphere)
+
+  // Monkey !
+  const loader = new GLTFLoader()
+  const gltf = await loader.loadAsync(monkeyURL)
+  monkeyObj = gltf.scene
+  monkeyObj.name = "monkey"
+  monkeyObj.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true
+      child.receiveShadow = true
+      child.material.roughness = 0.2
+    }
+  })
+  scene.add(monkeyObj)
+
+  console.log({ accShadows, scene })
+}
+
 function init() {
   gui = new GUI({ title: "PSM " + version })
+  gui.add(params, "envMapIntensity", 0, 10, 0.01).onChange(setEnvIntensity)
+
   stats = new Stats()
   app.appendChild(stats.dom)
   // renderer
@@ -47,12 +89,13 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.shadowMap.enabled = true
   renderer.outputEncoding = sRGBEncoding
+  renderer.toneMapping = ACESFilmicToneMapping
 
   app.appendChild(renderer.domElement)
 
   // camera
   camera = new PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 300)
-  camera.position.set(0, 5, 5)
+  camera.position.set(-6, 4, 4)
   camera.name = "Camera"
 
   // scene
@@ -60,10 +103,10 @@ function init() {
   scene.background = new Color(0x949494)
 
   const rgbeLoader = new RGBELoader()
-  rgbeLoader.load(moonless_golf_1k, (texture) => {
+  rgbeLoader.load(hdriUrl, (texture) => {
     texture.mapping = EquirectangularReflectionMapping
     scene.background = texture
-    // scene.backgroundBlurriness = 0.2
+    scene.backgroundBlurriness = 0.2
     scene.environment = texture
   })
 
@@ -77,8 +120,6 @@ function init() {
   controls.maxPolarAngle = Math.PI / 1.5
   controls.target.set(0, 0, 0)
   window.addEventListener("resize", onWindowResize)
-
-  addModels()
 }
 
 function onWindowResize() {
@@ -101,20 +142,15 @@ function animate() {
   render()
 }
 
-async function addModels() {
-  // ground plane
-  groundMesh = new Mesh(
-    new PlaneGeometry(6, 6),
-    new MeshStandardMaterial({
-      color: 0xffffff,
-      name: "groundMat",
-    })
-  )
-  groundMesh.rotation.x = -Math.PI / 2
-  groundMesh.name = "groundMesh"
-  groundMesh.receiveShadow = true
-  scene.add(groundMesh)
+function setEnvIntensity() {
+  scene.traverse((node) => {
+    if (node.material && node.material.isMeshStandardMaterial) {
+      node.material.envMapIntensity = params.envMapIntensity
+    }
+  })
+}
 
+async function doPSM() {
   // Sphere
   sphere = new Mesh(
     new SphereGeometry(0.5, 12, 12),
@@ -123,7 +159,6 @@ async function addModels() {
   sphere.name = "sphere"
   sphere.castShadow = true
   sphere.receiveShadow = true
-
   sphere.position.set(1, 0.6, 1)
   scene.add(sphere)
 
@@ -142,7 +177,6 @@ async function addModels() {
   })
   scene.add(monkeyObj)
 
-  shadowMapObjects.push(groundMesh)
   shadowMapObjects.push(sphere)
 
   initProgressiveShadows()
@@ -168,10 +202,24 @@ async function initProgressiveShadows() {
   control2.size = 0.3
 
   // psm stuff
-  const psm = new PSM(renderer, camera)
+  const psm = new PSM(renderer, camera, scene)
   control.attach(psm.lightOrigin)
-  psm.addGui(gui)
-  psm.object = sphere
+
   psm.addObjectsToLightMap(shadowMapObjects)
   console.log({ psm })
+
+  gui.add(psm.params, "enable")
+  gui.add(psm.params, "frames", 10, 500).step(1)
+
+  gui.add(psm.params, "blendWindow", 1, 500).step(1)
+  gui.add(psm.params, "lightRadius", 0, 10).step(0.1)
+  gui.add(psm.params, "ambientWeight", 0, 1).step(0.1)
+  gui.add(psm.params, "debugMap").onChange((v) => {
+    psm.showDebugLightmap(v)
+  })
+  gui.add(psm, "accumulate")
+
+  gui.add(psm, "clear")
+
+  psm.accumulate()
 }

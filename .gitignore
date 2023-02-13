@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 *.blend
 
-AccumulativeShadows.tsx
+ReactAccumulativeShadows.tsx

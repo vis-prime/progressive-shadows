@@ -1,5 +1,21 @@
-import { MeshLambertMaterial } from "three"
+import { AddEquation } from "three"
+import { ReverseSubtractEquation } from "three"
+import { SubtractEquation } from "three"
+import { MinEquation } from "three"
 import {
+  OneFactor,
+  ZeroFactor,
+  SrcColorFactor,
+  OneMinusSrcAlphaFactor,
+  OneMinusDstAlphaFactor,
+  OneMinusDstColorFactor,
+  DstColorFactor,
+  DstAlphaFactor,
+  OneMinusSrcColorFactor,
+  MaxEquation,
+  SrcAlphaFactor,
+  CustomBlending,
+  MeshLambertMaterial,
   DirectionalLight,
   DoubleSide,
   FloatType,
@@ -7,18 +23,16 @@ import {
   HalfFloatType,
   Mesh,
   MeshBasicMaterial,
-  MeshPhongMaterial,
   PlaneGeometry,
   Scene,
   WebGLRenderer,
   WebGLRenderTarget,
+  MeshStandardMaterial,
 } from "three"
-import { potpack } from "three/examples/jsm/libs/potpack.module"
-import { DiscardMaterial } from "./DiscardMaterial"
 
 const params = {
-  Enable: true,
-  blurEdges: true,
+  enable: true,
+  frames: 100,
   blendWindow: 100,
   lightRadius: 2,
   ambientWeight: 0.5,
@@ -30,7 +44,9 @@ export class PSM {
    * PSM
    * @param {WebGLRenderer} renderer
    */
-  constructor(renderer, camera, res = 1024) {
+  constructor(renderer, camera, scene, res = 1024) {
+    this.params = params
+    this.realScene = scene
     this.camera = camera
     this.renderer = renderer
     this.res = res
@@ -45,8 +61,8 @@ export class PSM {
     this.dirLights = []
     this.lightCount = 8
     this.shadowMapRes = 512
-
-    this.object = null
+    this.killCompute = false
+    this.isComputing = false
 
     // create 8 directional lights to speed up the convergence
     for (let l = 0; l < this.lightCount; l++) {
@@ -72,7 +88,7 @@ export class PSM {
      */
     this.lightOrigin = new Group()
     this.lightOrigin.name = "lightOrigin"
-    this.lightOrigin.position.set(5, 5, 5)
+    this.lightOrigin.position.set(5, 5, 3)
     this.scene.add(this.lightOrigin)
 
     const lightTarget = new Group()
@@ -87,8 +103,59 @@ export class PSM {
     this.progressiveLightMap1 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
     this.progressiveLightMap2 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
 
+    // create plane to catch shadows
+    this.shadowCatcherMesh = new Mesh(
+      new PlaneGeometry(6, 6),
+      new MeshBasicMaterial({
+        color: 0xffffff,
+        name: "shadow_catcher_mat",
+        map: this.progressiveLightMap2.texture,
+        transparent: true,
+        toneMapped: false,
+        fog: false,
+        blending: CustomBlending,
+
+        // blendEquation: AddEquation,
+        // blendEquation: SubtractEquation,
+        // blendEquation: ReverseSubtractEquation,
+        blendEquation: MinEquation,
+        // blendEquation: MaxEquation,
+
+        // blendSrc: ZeroFactor,
+        // blendSrc: OneFactor,
+        // blendSrc: SrcColorFactor,
+        // blendSrc: OneMinusSrcColorFactor,
+        // blendSrc: SrcAlphaFactor,
+        // blendSrc: OneMinusSrcAlphaFactor,
+        // blendSrc: DstAlphaFactor,
+        // blendSrc: OneMinusDstAlphaFactor,
+        // blendSrc: DstColorFactor,
+        // blendSrc: OneMinusDstColorFactor,
+
+        // blendDst: ZeroFactor,
+        // blendDst: OneFactor,
+        // blendDst: SrcColorFactor,
+        // blendDst: OneMinusSrcColorFactor,
+        // blendDst: SrcAlphaFactor,
+        // blendDst: OneMinusSrcAlphaFactor,
+        // blendDst: DstAlphaFactor,
+        // blendDst: OneMinusDstAlphaFactor,
+        // blendDst: DstColorFactor,
+        // blendDst: OneMinusDstColorFactor,
+      })
+    )
+    this.shadowCatcherMesh.renderOrder = 1000
+
+    this.shadowCatcherMesh.rotation.x = -Math.PI / 2
+    this.shadowCatcherMesh.name = "shadow_catcher_mesh"
+    this.shadowCatcherMesh.receiveShadow = true
+    this.realScene.add(this.shadowCatcherMesh)
+    this.lightMapContainers.push({
+      basicMat: this.shadowCatcherMesh.material,
+      object: this.shadowCatcherMesh,
+    })
+
     // Inject some spicy new logic into a standard phong material
-    this.discardMat = new DiscardMaterial()
     this.targetMat = new MeshLambertMaterial({ fog: false })
     this.previousShadowMap = { value: this.progressiveLightMap1.texture }
     this.averagingWindow = { value: 100 }
@@ -129,46 +196,13 @@ export class PSM {
    * @param {Object3D} objects An array of objects and lights to set up your lightmap.
    */
   addObjectsToLightMap(objects) {
-    // Prepare list of UV bounding boxes for packing later...
-    this.uv_boxes = []
-    const padding = 3 / this.res
-
     for (let ob = 0; ob < objects.length; ob++) {
       const object = objects[ob]
       console.log(object.name)
-      // If this object is a light, simply add it to the internal scene
-      if (object.isLight) {
-        this.scene.attach(object)
-        continue
-      }
 
       if (!object.geometry.hasAttribute("uv")) {
         console.warn("All lightmap objects need UVs!")
         continue
-      }
-
-      if (this.blurringPlane == null) {
-        this._initializeBlurPlane(this.res, this.progressiveLightMap1)
-      }
-
-      // Apply the lightmap to the object
-      if (object.name === "groundMesh") {
-        object.material.lightMap = this.progressiveLightMap2.texture
-        object.material.dithering = true
-        object.castShadow = true
-        object.receiveShadow = true
-        object.renderOrder = 1000 + ob
-        const uv = object.geometry.getAttribute("uv")
-        object.geometry.setAttribute("uv2", uv)
-        object.geometry.getAttribute("uv2").needsUpdate = true
-        // Prepare UV boxes for potpack
-        // TODO: Size these by object surface area
-
-        this.uv_boxes.push({
-          w: 1 + padding * 2,
-          h: 1 + padding * 2,
-          index: ob,
-        })
       }
 
       this.lightMapContainers.push({
@@ -180,78 +214,29 @@ export class PSM {
     }
   }
 
-  /**
-   * INTERNAL Creates the Blurring Plane
-   * @param {number} res The square resolution of this object's lightMap.
-   * @param {WebGLRenderTexture} lightMap The lightmap to initialize the plane with.
-   */
-  _initializeBlurPlane(res, lightMap = null) {
-    const blurMaterial = new MeshBasicMaterial()
-    blurMaterial.uniforms = {
-      previousShadowMap: { value: null },
-      pixelOffset: { value: 1.0 / res },
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: 3.0,
-    }
-    blurMaterial.onBeforeCompile = (shader) => {
-      // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
-      shader.vertexShader = "#define USE_UV\n" + shader.vertexShader.slice(0, -1) + "	gl_Position = vec4((uv - 0.5) * 2.0, 1.0, 1.0); }"
+  connectShadowCatcher(object) {
+    // Apply the lightmap to the object as diffuse image (does not need uv2)
+    object.material.map = this.progressiveLightMap2.texture
 
-      // Fragment Shader: Set Pixels to 9-tap box blur the current frame's Shadows
-      const bodyStart = shader.fragmentShader.indexOf("void main() {")
-      shader.fragmentShader =
-        "#define USE_UV\n" +
-        shader.fragmentShader.slice(0, bodyStart) +
-        "	uniform sampler2D previousShadowMap;\n	uniform float pixelOffset;\n" +
-        shader.fragmentShader.slice(bodyStart - 1, -1) +
-        `	gl_FragColor.rgb = (
-									texture2D(previousShadowMap, vUv + vec2( pixelOffset,  0.0        )).rgb +
-									texture2D(previousShadowMap, vUv + vec2( 0.0        ,  pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2( 0.0        , -pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2(-pixelOffset,  0.0        )).rgb +
-									texture2D(previousShadowMap, vUv + vec2( pixelOffset,  pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2(-pixelOffset,  pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2( pixelOffset, -pixelOffset)).rgb +
-									texture2D(previousShadowMap, vUv + vec2(-pixelOffset, -pixelOffset)).rgb)/8.0;
-				}`
+    // Apply the lightmap to the object  as diffuse image (needs uv2)
+    // object.material.lightMap = this.progressiveLightMap2.texture
+    // object.material.dithering = true
+    // object.geometry.setAttribute("uv2", object.geometry.getAttribute("uv")) // clone uv1 as uv2
 
-      // Set the LightMap Accumulation Buffer
-      shader.uniforms.previousShadowMap = { value: lightMap.texture }
-      shader.uniforms.pixelOffset = { value: 0.5 / res }
-      blurMaterial.uniforms = shader.uniforms
+    object.renderOrder = 1000
 
-      // Set the new Shader to this
-      blurMaterial.userData.shader = shader
-
-      this.compiled = true
-    }
-
-    this.blurringPlane = new Mesh(new PlaneGeometry(1, 1), blurMaterial)
-    this.blurringPlane.name = "Blurring Plane"
-    this.blurringPlane.frustumCulled = false
-    this.blurringPlane.renderOrder = 0
-    this.blurringPlane.material.depthWrite = false
-    this.scene.add(this.blurringPlane)
+    this.lightMapContainers.push({
+      basicMat: object.material,
+      object: object,
+    })
   }
 
   /**
    * This function renders each mesh one at a time into their respective surface maps
    * @param {Camera} camera Standard Rendering Camera
    * @param {number} blendWindow When >1, samples will accumulate over time.
-   * @param {boolean} blurEdges  Whether to fix UV Edges via blurring
    */
-  update(camera, blendWindow = 100, blurEdges = true) {
-    if (this.blurringPlane == null) {
-      return
-    }
-
-    // Store the original Render Target
-    const oldTarget = this.renderer.getRenderTarget()
-
-    // The blurring plane applies blur to the seams of the lightmap
-    this.blurringPlane.visible = blurEdges
-
+  update(camera, blendWindow = 100) {
     // Steal the Object3D from the real world to our special dimension
     for (let l = 0; l < this.lightMapContainers.length; l++) {
       this.lightMapContainers[l].object.oldScene = this.lightMapContainers[l].object.parent
@@ -280,9 +265,7 @@ export class PSM {
     // Render the object's surface maps
     this.renderer.setRenderTarget(activeMap)
     this.targetMat.uniforms.previousShadowMap = { value: inactiveMap.texture }
-    this.blurringPlane.material.uniforms.previousShadowMap = {
-      value: inactiveMap.texture,
-    }
+
     this.buffer1Active = !this.buffer1Active
     this.renderer.render(this.scene, camera)
 
@@ -294,7 +277,7 @@ export class PSM {
     }
 
     // Restore the original Render Target
-    this.renderer.setRenderTarget(oldTarget)
+    this.renderer.setRenderTarget(null)
   }
 
   /** DEBUG
@@ -320,7 +303,7 @@ export class PSM {
       this.labelPlane = new PlaneGeometry(1, 1)
       this.labelMesh = new Mesh(this.labelPlane, this.labelMaterial)
       this.labelMesh.position.y = 3
-      this.lightMapContainers[0].object.parent.add(this.labelMesh)
+      this.realScene.add(this.labelMesh)
     }
 
     if (position != undefined) {
@@ -330,54 +313,59 @@ export class PSM {
     this.labelMesh.visible = visible
   }
 
-  addGui(gui) {
-    gui.add(params, "Enable")
-    gui.add(params, "blurEdges")
-    gui.add(params, "blendWindow", 1, 500).step(1)
-    gui.add(params, "lightRadius", 0, 10).step(0.1)
-    gui.add(params, "ambientWeight", 0, 1).step(0.1)
-    gui.add(params, "debugMap").onChange(() => {
-      this.showDebugLightmap(params.debugMap)
-    })
-    gui.add(this, "accumulate")
-    gui.add(this, "clear")
+  randomiseLights() {
+    const length = this.lightOrigin.position.length()
+    // Manually Update the Directional Lights
+    for (let l = 0; l < this.dirLights.length; l++) {
+      // Sometimes they will be sampled from the target direction
+      // Sometimes they will be uniformly sampled from the upper hemisphere
+      if (Math.random() > params.ambientWeight) {
+        this.dirLights[l].position.set(
+          this.lightOrigin.position.x + Math.random() * params.lightRadius,
+          this.lightOrigin.position.y + Math.random() * params.lightRadius,
+          this.lightOrigin.position.z + Math.random() * params.lightRadius
+        )
+      } else {
+        // Uniform Hemispherical Surface Distribution for Ambient Occlusion
+        const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
+        const phi = 2 * 3.14159 * Math.random()
+        this.dirLights[l].position.set(
+          Math.cos(lambda) * Math.cos(phi) * length,
+          Math.abs(Math.cos(lambda) * Math.sin(phi) * length),
+          Math.sin(lambda) * length
+        )
+      }
+    }
   }
 
   async accumulate() {
-    if (!params.Enable) return
+    if (!params.enable) return
+
+    if (this.isComputing) {
+      console.log("Accumulate already in progress")
+      return
+    }
+
     // Accumulate Surface Maps
     console.log("Accumulate start...")
-    for (let index = 0; index < 600; index++) {
-      await sleep(2)
-
-      this.update(this.camera, params.blendWindow, params.blurEdges)
-
-      // Manually Update the Directional Lights
-      for (let l = 0; l < this.dirLights.length; l++) {
-        // Sometimes they will be sampled from the target direction
-        // Sometimes they will be uniformly sampled from the upper hemisphere
-        if (Math.random() > params.ambientWeight) {
-          this.dirLights[l].position.set(
-            this.lightOrigin.position.x + Math.random() * params.lightRadius,
-            this.lightOrigin.position.y + Math.random() * params.lightRadius,
-            this.lightOrigin.position.z + Math.random() * params.lightRadius
-          )
-        } else {
-          // Uniform Hemispherical Surface Distribution for Ambient Occlusion
-          const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
-          const phi = 2 * 3.14159 * Math.random()
-          this.dirLights[l].position.set(
-            Math.cos(lambda) * Math.cos(phi) * 3 + this.object.position.x,
-            Math.abs(Math.cos(lambda) * Math.sin(phi) * 3) + this.object.position.y + 2,
-            Math.sin(lambda) * 3 + this.object.position.z
-          )
-        }
+    for (let index = 0; index < params.frames; index++) {
+      if (this.killCompute) {
+        this.killCompute = false
+        break
       }
+
+      this.isComputing = true
+      await sleep(10)
+
+      this.update(this.camera, params.blendWindow)
+      this.randomiseLights()
     }
     console.log("Accumulate end")
+    this.isComputing = false
   }
 
   clear() {
+    if (this.isComputing) this.killCompute = true
     this.progressiveLightMap1.dispose()
     this.progressiveLightMap2.dispose()
   }
