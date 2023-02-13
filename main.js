@@ -229,7 +229,7 @@ async function initProgressiveShadows() {
 
   gui.add(psm.params, "enable")
   gui.add(psm.params, "frames", 10, 500, 1)
-  gui.add(psm.params, "updateWaitTime", 1, 100, 1)
+  gui.add(psm.params, "updateDelay", 1, 100, 1)
   gui.add(psm.params, "blendWindow", 1, 500, 1)
   gui.add(psm.params, "lightRadius", 0, 30, 0.1)
   gui.add(psm.params, "ambientWeight", 0, 1, 0.1)

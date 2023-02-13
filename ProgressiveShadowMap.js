@@ -41,7 +41,7 @@ const params = {
   ambientWeight: 0.5,
   opacity: 0.8,
   debugMap: false,
-  updateWaitTime: 10,
+  updateDelay: 10,
 }
 
 export class PSM {
@@ -317,7 +317,7 @@ export class PSM {
         MathUtils.mapLinear(index, params.frames / 1.5, params.frames - 1, 0, params.opacity)
       )
 
-      await sleep(params.updateWaitTime)
+      await sleep(params.updateDelay)
 
       this.renderOnLightMap(this.camera, params.blendWindow)
       this.randomiseLights()
