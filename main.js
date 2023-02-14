@@ -5,6 +5,7 @@ import Stats from "three/examples/jsm/libs/stats.module"
 import { GUI } from "lil-gui"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader"
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader"
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader"
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
@@ -16,7 +17,6 @@ const app = document.getElementById("app")
 
 import {
   ACESFilmicToneMapping,
-  Color,
   EquirectangularReflectionMapping,
   Mesh,
   MeshStandardMaterial,
@@ -28,11 +28,9 @@ import {
   Vector3,
   Vector2,
   MathUtils,
-  FogExp2,
 } from "three"
 import { PSM } from "./ProgressiveShadowMap"
 import { AccumulativeShadows } from "./AccumulativeShadows"
-import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js"
 
 let stats,
   renderer,
@@ -51,9 +49,10 @@ const params = {
 }
 
 const loader = new GLTFLoader()
-const dcl = new DRACOLoader()
-dcl.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/")
-loader.setDRACOLoader(dcl)
+const draco = new DRACOLoader()
+// draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/")
+draco.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/")
+loader.setDRACOLoader(draco)
 
 let shadowMapObjects = []
 
@@ -187,7 +186,6 @@ async function doPSM() {
   scene.add(sphere)
 
   // Monkey !
-  const loader = new GLTFLoader()
   const gltf = await loader.loadAsync(rx7URL)
   rx7 = gltf.scene
   rx7.name = "monkey"
