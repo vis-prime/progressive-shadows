@@ -52,9 +52,7 @@ const params = {
 
 const loader = new GLTFLoader()
 const dcl = new DRACOLoader()
-// dcl.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/")
-dcl.setDecoderPath("jsm/libs/draco/")
-dcl.setDecoderConfig({ type: "js" })
+dcl.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/")
 loader.setDRACOLoader(dcl)
 
 let shadowMapObjects = []
