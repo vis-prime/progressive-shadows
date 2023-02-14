@@ -39,7 +39,7 @@ const params = {
   blendWindow: 100,
   lightRadius: 2,
   ambientWeight: 0.5,
-  opacity: 0.8,
+  alphaTest: 1.0,
   debugMap: false,
   updateDelay: 10,
 }
@@ -68,7 +68,6 @@ export class PSM {
     this.shadowMapRes = 512
     this.killCompute = false
     this.isComputing = false
-    this.shadowColor = new Color(1, 0, 0)
     this.clearColor = new Color()
     this.clearAlpha = 0
     this.progress = 0
@@ -98,7 +97,7 @@ export class PSM {
      */
     this.lightOrigin = new Group()
     this.lightOrigin.name = "lightOrigin"
-    this.lightOrigin.position.set(5, 5, 3)
+    this.lightOrigin.position.set(5, 5, -4)
     this.scene.add(this.lightOrigin)
 
     const lightTarget = new Group()
@@ -113,18 +112,15 @@ export class PSM {
     this.progressiveLightMap1 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
     this.progressiveLightMap2 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
 
+    this.shadowCatcherMaterial = new SoftShadowMaterial({
+      map: this.progressiveLightMap2.texture,
+    })
     // create plane to catch shadows
-    this.shadowCatcherMesh = new Mesh(
-      new PlaneGeometry(6, 6),
-      new SoftShadowMaterial({
-        color: this.shadowColor,
-        map: this.progressiveLightMap2.texture,
-      })
-    )
+    this.shadowCatcherMesh = new Mesh(new PlaneGeometry(6, 6).rotateX(-Math.PI / 2), this.shadowCatcherMaterial)
 
     this.shadowCatcherMesh.renderOrder = 1000
 
-    this.shadowCatcherMesh.rotation.x = -Math.PI / 2
+    // this.shadowCatcherMesh.rotation.x = -Math.PI / 2
     this.shadowCatcherMesh.name = "shadow_catcher_mesh"
     this.shadowCatcherMesh.receiveShadow = true
     this.realScene.add(this.shadowCatcherMesh)
@@ -303,27 +299,21 @@ export class PSM {
 
     this.clear()
     this.accumulate()
-    console.log("Accumulate end")
   }
 
   async accumulate() {
     // Accumulate Surface Maps
-    const date = Date.now()
+    console.log("Accumulate start")
     this.isComputing = true
     for (let index = 0; index < params.frames; index++) {
-      console.log(date, "index")
-      this.shadowCatcherMesh.material.opacity = Math.max(
-        0,
-        MathUtils.mapLinear(index, params.frames / 1.5, params.frames - 1, 0, params.opacity)
-      )
-
+      this.shadowCatcherMesh.material.alphaTest = Math.max(0, MathUtils.mapLinear(index, 1, params.frames - 1, 0, params.alphaTest))
       await sleep(params.updateDelay)
-
       this.renderOnLightMap(this.camera, params.blendWindow)
       this.randomiseLights()
       this.progress = MathUtils.mapLinear(index, 0, params.frames - 1, 0, 100)
     }
     this.isComputing = false
+    console.log("Accumulate end")
   }
 
   clear() {
@@ -339,7 +329,7 @@ export class PSM {
     this.renderer.setRenderTarget(null)
     this.renderer.setClearColor(this.clearColor, this.clearAlpha)
 
-    this.shadowCatcherMesh.material.opacity = 0
+    this.shadowCatcherMesh.material.alphaTest = 0.0
   }
 }
 
@@ -347,36 +337,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Create a new custom material
-var shadowOnlyMaterial = shaderMaterial(
-  {
-    transparent: true,
-    map: null,
-    // alphaTest: 0.5,
-  },
-  `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-    }
-  `,
-  `
-   uniform sampler2D map;
-    varying vec2 vUv;
-    void main() {
-      float grey = texture2D(map, vUv).g;
-      gl_FragColor = vec4(grey, grey, grey, 1.0 - grey);
-    }
-  `
-)
-
 const SoftShadowMaterial = shaderMaterial(
   {
     transparent: true,
-    color: null,
-    alphaTest: 1.0,
-    opacity: 0.0,
+    color: new Color(0, 0, 0),
+    alphaTest: 0.0,
+    opacity: 1.0,
     map: null,
     depthWrite: false,
     toneMapped: false,

@@ -98,7 +98,7 @@ function init() {
   app.appendChild(renderer.domElement)
 
   // camera
-  camera = new PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 300)
+  camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300)
   camera.position.set(-6, 4, 4)
   camera.name = "Camera"
 
@@ -157,14 +157,11 @@ function setEnvIntensity() {
 
 async function doPSM() {
   // Sphere
-  sphere = new Mesh(
-    new SphereGeometry(0.5, 16, 16),
-    new MeshStandardMaterial({ name: "sphereMat", color: 0xc0ffee, roughness: 0, metalness: 1 })
-  )
+  sphere = new Mesh(new SphereGeometry(0.5), new MeshStandardMaterial({ name: "sphereMat", color: 0xc0ffee, roughness: 0, metalness: 1 }))
   sphere.name = "sphere"
   sphere.castShadow = true
   sphere.receiveShadow = true
-  sphere.position.set(1, 0.6, 1)
+  sphere.position.set(1, 0.5, 1.5)
   scene.add(sphere)
 
   // Monkey !
@@ -193,7 +190,7 @@ async function initProgressiveShadows() {
   control.addEventListener("dragging-changed", (event) => {
     controls.enabled = !event.value
     if (!event.value) {
-      psm.shadowColor.setHSL(Math.random(), 1, 0.5)
+      psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
       psm.update()
     }
   })
@@ -204,8 +201,7 @@ async function initProgressiveShadows() {
   control2.addEventListener("dragging-changed", (event) => {
     controls.enabled = !event.value
     if (!event.value) {
-      psm.shadowColor.setHSL(Math.random(), 0.5, 0.5)
-
+      psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
       psm.update()
     }
   })
@@ -216,6 +212,7 @@ async function initProgressiveShadows() {
     sphere.position.clamp(clampMin, clampMax)
   })
   control2.name = "control sphere"
+  control2.showY = false
   scene.add(control2)
   control2.attach(sphere)
   control2.size = 1
@@ -233,24 +230,27 @@ async function initProgressiveShadows() {
   gui.add(psm.params, "blendWindow", 1, 500, 1)
   gui.add(psm.params, "lightRadius", 0, 30, 0.1)
   gui.add(psm.params, "ambientWeight", 0, 1, 0.1)
-  gui.addColor(psm, "shadowColor").listen()
-  gui.add(psm, "progress", 0, 100, 1).listen().disable()
-  gui.add(psm.shadowCatcherMesh.material, "blend", 0, 2, 0.01)
+  gui.addColor(psm.shadowCatcherMaterial, "color").listen()
+
+  gui.add(psm.shadowCatcherMaterial, "blend", 0, 2, 0.01)
+  gui.add(psm.shadowCatcherMaterial, "opacity", 0, 1, 0.01)
+
   gui
-    .add(psm.params, "opacity", 0, 1, 0.01)
+    .add(psm.params, "alphaTest", 0, 1, 0.01)
 
     .onChange((v) => {
-      psm.shadowCatcherMesh.material.opacity = v
+      psm.shadowCatcherMaterial.alphaTest = v
     })
 
   gui.add(psm.params, "debugMap").onChange((v) => {
     psm.showDebugLightmap(v)
   })
   gui.add(psm, "update")
+  gui.add(psm, "progress", 0, 100, 1).listen().disable()
 
   setTimeout(() => {
     psm.update()
-  }, 1000)
+  }, 8000)
 }
 
 // function shaderMaterialTest() {
