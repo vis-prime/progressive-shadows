@@ -1,22 +1,6 @@
-import { AddEquation, ShaderMaterial, ShadowMaterial } from "three"
-import { ReverseSubtractEquation } from "three"
 import { Color } from "three"
 import { MathUtils } from "three"
-import { SubtractEquation } from "three"
-import { MinEquation } from "three"
 import {
-  OneFactor,
-  ZeroFactor,
-  SrcColorFactor,
-  OneMinusSrcAlphaFactor,
-  OneMinusDstAlphaFactor,
-  OneMinusDstColorFactor,
-  DstColorFactor,
-  DstAlphaFactor,
-  OneMinusSrcColorFactor,
-  MaxEquation,
-  SrcAlphaFactor,
-  CustomBlending,
   MeshLambertMaterial,
   DirectionalLight,
   DoubleSide,
@@ -29,7 +13,6 @@ import {
   Scene,
   WebGLRenderer,
   WebGLRenderTarget,
-  MeshStandardMaterial,
 } from "three"
 import { shaderMaterial } from "./shaderMaterial"
 
@@ -97,9 +80,10 @@ export class PSM {
      */
     this.lightOrigin = new Group()
     this.lightOrigin.name = "lightOrigin"
-    this.lightOrigin.position.set(5, 5, -4)
+    this.lightOrigin.position.set(5, 3, 1)
     this.scene.add(this.lightOrigin)
 
+    // make all lights point to a single source
     const lightTarget = new Group()
     lightTarget.position.set(0, 0, 0)
     for (let l = 0; l < this.dirLights.length; l++) {
@@ -117,13 +101,13 @@ export class PSM {
     })
     // create plane to catch shadows
     this.shadowCatcherMesh = new Mesh(new PlaneGeometry(6, 6).rotateX(-Math.PI / 2), this.shadowCatcherMaterial)
-
+    this.shadowCatcherMesh.position.y = 0.001 // avoid z-flicker
     this.shadowCatcherMesh.renderOrder = 1000
 
-    // this.shadowCatcherMesh.rotation.x = -Math.PI / 2
-    this.shadowCatcherMesh.name = "shadow_catcher_mesh"
+    this.shadowCatcherMesh.name = "shadowCatcherMesh"
     this.shadowCatcherMesh.receiveShadow = true
     this.realScene.add(this.shadowCatcherMesh)
+
     this.lightMapContainers.push({
       basicMat: this.shadowCatcherMesh.material,
       object: this.shadowCatcherMesh,

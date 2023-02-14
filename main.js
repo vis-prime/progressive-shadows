@@ -26,14 +26,25 @@ import {
   sRGBEncoding,
   WebGLRenderer,
   Vector3,
+  Vector2,
+  MathUtils,
+  FogExp2,
 } from "three"
 import { PSM } from "./ProgressiveShadowMap"
 import { AccumulativeShadows } from "./AccumulativeShadows"
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js"
 
-let stats, renderer, camera, scene, controls, gui
+let stats,
+  renderer,
+  camera,
+  scene,
+  controls,
+  gui,
+  pointer = new Vector2()
 
-let sphere, monkeyObj
+let sphere, monkeyObj, rx7, rx7Car
+let wheelSpin = () => {}
+let wheelSteer = () => {}
 
 const params = {
   envMapIntensity: 1,
@@ -94,7 +105,7 @@ function init() {
   app.appendChild(stats.dom)
   // renderer
   renderer = new WebGLRenderer({ antialias: true })
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
+  renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio))
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.shadowMap.enabled = true
   renderer.outputEncoding = sRGBEncoding
@@ -109,7 +120,6 @@ function init() {
 
   // scene
   scene = new Scene()
-  scene.background = new Color(0x949494)
 
   const rgbeLoader = new RGBELoader()
   rgbeLoader.load(hdriUrl, (texture) => {
@@ -129,6 +139,7 @@ function init() {
   controls.maxPolarAngle = Math.PI / 1.5
   controls.target.set(0, 0, 0)
   window.addEventListener("resize", onWindowResize)
+  document.addEventListener("pointermove", onPointerMove)
 }
 
 function onWindowResize() {
@@ -141,6 +152,8 @@ function render() {
   stats.update()
   // Update the inertia on the orbit controls
   controls.update()
+
+  wheelSpin()
 
   // Render Scene
   renderer.render(scene, camera)
@@ -160,31 +173,69 @@ function setEnvIntensity() {
   })
 }
 
+function onPointerMove(event) {
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1
+  wheelSteer(pointer)
+}
+
 async function doPSM() {
   // Sphere
   sphere = new Mesh(new SphereGeometry(0.5), new MeshStandardMaterial({ name: "sphereMat", color: 0xc0ffee, roughness: 0, metalness: 1 }))
   sphere.name = "sphere"
   sphere.castShadow = true
   sphere.receiveShadow = true
-  sphere.position.set(1, 0.5, 1.5)
+  sphere.position.set(2.5, 0.5, 0)
   scene.add(sphere)
 
   // Monkey !
   const loader = new GLTFLoader()
   const gltf = await loader.loadAsync(rx7URL)
-  monkeyObj = gltf.scene
-  monkeyObj.name = "monkey"
-  monkeyObj.traverse((child) => {
+  rx7 = gltf.scene
+  rx7.name = "monkey"
+
+  rx7.traverse((child) => {
     if (child.isMesh) {
-      child.castShadow = true
-      child.receiveShadow = true
+      if (!child.name.includes("road")) {
+        child.castShadow = true
+        child.receiveShadow = true
+      }
+
       shadowMapObjects.push(child)
     }
   })
-  scene.add(monkeyObj)
+
+  const FL = rx7.getObjectByName("wheel_front_L"),
+    FR = rx7.getObjectByName("wheel_front_R"),
+    RL = rx7.getObjectByName("wheel_rear_L"),
+    RR = rx7.getObjectByName("wheel_rear_R"),
+    ST_L = FL.parent,
+    ST_R = FR.parent,
+    road = rx7.getObjectByName("road1")
+
+  rx7Car = rx7.getObjectByName("rx7")
+
+  const roadMat = road.material
+  const tex = roadMat.map
+
+  if (FL && FR && RL && RR) {
+    wheelSpin = () => {
+      FL.rotateY(-0.01)
+      FR.rotateY(0.01)
+      RL.rotateY(0.01)
+      RR.rotateY(-0.01)
+      tex.offset.x -= 0.0007
+    }
+
+    wheelSteer = (p) => {
+      ST_L.rotation.y = MathUtils.mapLinear(p.x, -1, 1, MathUtils.degToRad(-15), MathUtils.degToRad(15))
+      ST_R.rotation.y = MathUtils.mapLinear(p.x, -1, 1, MathUtils.degToRad(15), MathUtils.degToRad(-15))
+    }
+  }
+
+  scene.add(rx7)
 
   shadowMapObjects.push(sphere)
-
   initProgressiveShadows()
 }
 
@@ -195,7 +246,7 @@ async function initProgressiveShadows() {
   control.addEventListener("dragging-changed", (event) => {
     controls.enabled = !event.value
     if (!event.value) {
-      psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
+      // psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
       psm.update()
     }
   })
@@ -206,20 +257,22 @@ async function initProgressiveShadows() {
   control2.addEventListener("dragging-changed", (event) => {
     controls.enabled = !event.value
     if (!event.value) {
-      psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
+      // psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
       psm.update()
     }
   })
   const planeSize = 5 / 2
-  const clampMin = new Vector3(-planeSize, 0, -planeSize),
-    clampMax = new Vector3(planeSize, planeSize, planeSize)
+  const clampMin = new Vector3(-planeSize, 0, -2),
+    clampMax = new Vector3(planeSize, planeSize, 2)
   control2.addEventListener("change", (event) => {
-    sphere.position.clamp(clampMin, clampMax)
+    if (control2.object) control2.object.position.clamp(clampMin, clampMax)
   })
   control2.name = "control sphere"
   control2.showY = false
+  control2.showZ = false
+
   scene.add(control2)
-  control2.attach(sphere)
+  control2.attach(rx7Car)
   control2.size = 1
 
   // psm stuff
@@ -253,9 +306,9 @@ async function initProgressiveShadows() {
   gui.add(psm, "update")
   gui.add(psm, "progress", 0, 100, 1).listen().disable()
 
-  setTimeout(() => {
-    psm.update()
-  }, 2000)
+  // setTimeout(() => {
+  //   psm.update()
+  // }, 5000)
 }
 
 // function shaderMaterialTest() {
