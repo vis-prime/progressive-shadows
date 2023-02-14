@@ -39,9 +39,9 @@ const params = {
   blendWindow: 100,
   lightRadius: 2,
   ambientWeight: 0.5,
-  alphaTest: 1.0,
+  alphaTest: 0.95,
   debugMap: false,
-  updateDelay: 10,
+  updateDelay: 30,
 }
 
 export class PSM {
@@ -162,10 +162,12 @@ export class PSM {
       this.targetMat.userData.shader = shader
       this.compiled = true
     }
+
+    this.renderer.compile(this.scene, this.camera)
   }
 
   /**
-   * Sets these objects' materials' lightmaps and modifies their uv2's.
+   * Sets these objects' materials' lightMaps and modifies their uv2's.
    * @param {Object3D} objects An array of objects and lights to set up your lightmap.
    */
   addObjectsToLightMap(objects) {
@@ -297,23 +299,27 @@ export class PSM {
   async update() {
     if (!params.enable) return
 
+    if (this.isComputing) {
+      return
+    }
     this.clear()
     this.accumulate()
   }
 
   async accumulate() {
     // Accumulate Surface Maps
-    console.log("Accumulate start")
+    const id = (Math.random() * 100).toFixed(3)
+    console.log("Accumulate start", id)
     this.isComputing = true
     for (let index = 0; index < params.frames; index++) {
-      this.shadowCatcherMesh.material.alphaTest = Math.max(0, MathUtils.mapLinear(index, 1, params.frames - 1, 0, params.alphaTest))
-      await sleep(params.updateDelay)
+      this.shadowCatcherMesh.material.alphaTest = Math.max(0, MathUtils.mapLinear(index, 2, params.frames - 1, 0, params.alphaTest))
       this.renderOnLightMap(this.camera, params.blendWindow)
       this.randomiseLights()
       this.progress = MathUtils.mapLinear(index, 0, params.frames - 1, 0, 100)
+      await sleep(params.updateDelay)
     }
     this.isComputing = false
-    console.log("Accumulate end")
+    console.log("Accumulate end", id)
   }
 
   clear() {

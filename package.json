@@ -8,11 +8,16 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^3.0.0-alpha.4",
+    "@gltf-transform/extensions": "^3.0.0-alpha.4",
+    "@gltf-transform/functions": "^3.0.0-alpha.4",
     "vite": "^2.9.15",
-    "vite-plugin-compression": "^0.5.1"
+    "vite-plugin-compression": "^0.5.1",
+    "vite-plugin-gltf": "^3.1.0"
   },
   "dependencies": {
     "lil-gui": "^0.18.0",
+    "sharp": "^0.31.3",
     "three": "^0.149.0"
   },
   "prettier": {

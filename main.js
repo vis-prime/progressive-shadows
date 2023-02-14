@@ -1,7 +1,5 @@
 import "./style.css"
-import monkeyURL from "./public/monkey.glb?url"
 
-const app = document.getElementById("app")
 import { version } from "./package.json"
 import Stats from "three/examples/jsm/libs/stats.module"
 import { GUI } from "lil-gui"
@@ -11,28 +9,27 @@ import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
 import hdriUrl from "/public/aristea_wreck_1k.hdr?url"
+import monkeyURL from "./public/monkey.glb"
+import rx7URL from "./public/rx7.glb"
+
+const app = document.getElementById("app")
 
 import {
   ACESFilmicToneMapping,
   Color,
   EquirectangularReflectionMapping,
-  Group,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
-  PlaneGeometry,
   Scene,
-  ShaderMaterial,
   SphereGeometry,
   sRGBEncoding,
-  TextureLoader,
-  Vector2,
   WebGLRenderer,
+  Vector3,
 } from "three"
 import { PSM } from "./ProgressiveShadowMap"
 import { AccumulativeShadows } from "./AccumulativeShadows"
-import { Vector3 } from "three"
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js"
 
 let stats, renderer, camera, scene, controls, gui
 
@@ -42,14 +39,22 @@ const params = {
   envMapIntensity: 1,
 }
 
+const loader = new GLTFLoader()
+const dcl = new DRACOLoader()
+// dcl.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/")
+dcl.setDecoderPath("jsm/libs/draco/")
+dcl.setDecoderConfig({ type: "js" })
+loader.setDRACOLoader(dcl)
+
 let shadowMapObjects = []
 
 init()
 
-animate()
-
 // doAccumulate()
 doPSM()
+
+animate()
+
 // shaderMaterialTest()
 async function doAccumulate() {
   const accShadows = new AccumulativeShadows(renderer, camera, scene, gui)
@@ -66,7 +71,7 @@ async function doAccumulate() {
   scene.add(sphere)
 
   // Monkey !
-  const loader = new GLTFLoader()
+
   const gltf = await loader.loadAsync(monkeyURL)
   monkeyObj = gltf.scene
   monkeyObj.name = "monkey"
@@ -89,7 +94,7 @@ function init() {
   app.appendChild(stats.dom)
   // renderer
   renderer = new WebGLRenderer({ antialias: true })
-  renderer.setPixelRatio(window.devicePixelRatio)
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio))
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.shadowMap.enabled = true
   renderer.outputEncoding = sRGBEncoding
@@ -166,7 +171,7 @@ async function doPSM() {
 
   // Monkey !
   const loader = new GLTFLoader()
-  const gltf = await loader.loadAsync(monkeyURL)
+  const gltf = await loader.loadAsync(rx7URL)
   monkeyObj = gltf.scene
   monkeyObj.name = "monkey"
   monkeyObj.traverse((child) => {
@@ -250,7 +255,7 @@ async function initProgressiveShadows() {
 
   setTimeout(() => {
     psm.update()
-  }, 8000)
+  }, 2000)
 }
 
 // function shaderMaterialTest() {
