@@ -148,6 +148,7 @@ export class PSM {
     }
 
     this.renderer.compile(this.scene, this.camera)
+    this.framesDone = 0
   }
 
   /**
@@ -281,13 +282,13 @@ export class PSM {
   }
 
   async update() {
-    if (!params.enable) return
-
-    if (this.isComputing) {
-      return
-    }
+    // if (!params.enable) return
+    // if (this.isComputing) {
+    //   return
+    // }
     this.clear()
-    this.accumulate()
+    // this.accumulate()
+    this.framesDone = 0
   }
 
   async accumulate() {
@@ -320,6 +321,22 @@ export class PSM {
     this.renderer.setClearColor(this.clearColor, this.clearAlpha)
 
     this.shadowCatcherMesh.material.alphaTest = 0.0
+  }
+
+  renderInAnimateLoop() {
+    if (!params.enable || this.framesDone === params.frames) return
+
+    this.shadowCatcherMesh.material.alphaTest = MathUtils.clamp(
+      MathUtils.mapLinear(this.framesDone, 2, params.frames - 1, 0, params.alphaTest),
+      0,
+      1
+    )
+
+    this.renderOnLightMap(this.camera, params.blendWindow)
+    this.randomiseLights()
+    this.progress = MathUtils.mapLinear(this.framesDone, 0, params.frames - 1, 0, 100)
+
+    this.framesDone++
   }
 }
 

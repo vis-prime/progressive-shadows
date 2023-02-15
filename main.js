@@ -31,6 +31,7 @@ import {
 } from "three"
 import { PSM } from "./ProgressiveShadowMap"
 import { AccumulativeShadows } from "./AccumulativeShadows"
+import { ProgressiveShadows } from "./src/ProgressiveShadows"
 
 let stats,
   renderer,
@@ -38,6 +39,10 @@ let stats,
   scene,
   controls,
   gui,
+  /**
+   * @type {PSM}
+   */
+  psm,
   pointer = new Vector2()
 
 let sphere, monkeyObj, rx7, rx7Car
@@ -153,6 +158,7 @@ function render() {
   wheelSpin()
 
   // Render Scene
+  if (psm) psm.renderInAnimateLoop()
   renderer.render(scene, camera)
 }
 
@@ -226,6 +232,8 @@ async function doPSM() {
     wheelSteer = (p) => {
       ST_L.rotation.y = MathUtils.mapLinear(p.x, -1, 1, MathUtils.degToRad(-15), MathUtils.degToRad(15))
       ST_R.rotation.y = MathUtils.mapLinear(p.x, -1, 1, MathUtils.degToRad(15), MathUtils.degToRad(-15))
+
+      rx7Car.rotation.z = MathUtils.mapLinear(p.x, -1, 1, MathUtils.degToRad(-1), MathUtils.degToRad(1))
     }
   }
 
@@ -272,7 +280,7 @@ async function initProgressiveShadows() {
   control2.size = 1
 
   // psm stuff
-  const psm = new PSM(renderer, camera, scene)
+  psm = new PSM(renderer, camera, scene)
   control.attach(psm.lightOrigin)
 
   psm.addObjectsToLightMap(shadowMapObjects)
