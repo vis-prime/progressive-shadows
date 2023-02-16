@@ -37,6 +37,7 @@ import { AccumulativeShadows } from "./AccumulativeShadows"
 import { ProgressiveShadows } from "./src/ProgressiveShadows"
 import * as fflate from "three/examples/jsm/libs/fflate.module"
 import { PostProcess } from "./demo/Postprocess"
+import { SimpleScene } from "./demo/SimpleScene"
 
 let stats,
   raf,
@@ -69,13 +70,14 @@ const params = {
   printCam: () => {},
 }
 const axesHelper = new AxesHelper(0.1)
-
-const loader = new GLTFLoader()
+const rgbeLoader = new RGBELoader()
+const gltfLoader = new GLTFLoader()
 const draco = new DRACOLoader()
 // draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.5/")
 draco.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/")
-loader.setDRACOLoader(draco)
+gltfLoader.setDRACOLoader(draco)
 const raycaster = new Raycaster()
+
 let shadowMapObjects = []
 const intersects = []
 
@@ -83,9 +85,11 @@ const mainObjects = new Group()
 init()
 
 // doAccumulate()
-doPSM()
+// doPSM()
 
 animate()
+
+new SimpleScene({ gltfLoader, mainObjects, renderer, camera, scene, gui, psm })
 
 // shaderMaterialTest()
 async function doAccumulate() {
@@ -104,7 +108,7 @@ async function doAccumulate() {
 
   // Monkey !
 
-  const gltf = await loader.loadAsync(monkeyURL)
+  const gltf = await gltfLoader.loadAsync(monkeyURL)
   monkeyObj = gltf.scene
   monkeyObj.name = "monkey"
   monkeyObj.traverse((child) => {
@@ -142,7 +146,7 @@ function init() {
   // scene
   scene = new Scene()
   scene.backgroundBlurriness = 0.8
-  const rgbeLoader = new RGBELoader()
+
   rgbeLoader.load(hdriUrl, (texture) => {
     texture.mapping = EquirectangularReflectionMapping
     scene.background = texture
@@ -162,6 +166,8 @@ function init() {
   controls.target.fromArray[(-0.03252440077259709, -0.25907995684395363, 0.12217438610846955)]
 
   postProcess = new PostProcess(scene, camera, renderer)
+
+  psm = new PSM(renderer, camera, scene)
 
   window.addEventListener("resize", onWindowResize)
   document.addEventListener("pointermove", onPointerMove)
@@ -269,7 +275,7 @@ async function doPSM() {
   // shadowMapObjects.push(sphere)
 
   // Monkey !
-  const gltf = await loader.loadAsync(rx7URL)
+  const gltf = await gltfLoader.loadAsync(rx7URL)
   rx7 = gltf.scene
   rx7.name = "monkey"
 
@@ -321,7 +327,6 @@ async function doPSM() {
 
   /// PSM
   // psm stuff
-  psm = new PSM(renderer, camera, scene)
 
   // light position gizmo
   // const control = new TransformControls(camera, renderer.domElement)

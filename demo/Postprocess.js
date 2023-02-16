@@ -8,7 +8,6 @@ import {
   DepthOfFieldEffect,
 } from "postprocessing"
 import { PerspectiveCamera, Scene, Vector3, WebGLRenderer } from "three"
-import { SSREffect } from "screen-space-reflections"
 
 let scene, camera, renderer
 
@@ -124,7 +123,6 @@ export class PostProcess {
     const effect = new DepthOfFieldEffect(camera, { bokehScale: 3, worldFocusRange: 5 })
     effect.target = this.focus
     EFFECTS.dof = effect
-    console.log(effect)
     effect.resolution["scale"] = 0.6
     GUI_FUNCTIONS.dof = (gui) => {
       const folder = gui.addFolder("dof")
@@ -172,7 +170,6 @@ export class PostProcess {
 
     this.effectPass = new EffectPass(camera, ...enabledEffects)
     composer.addPass(this.effectPass)
-    console.log("UPDATED", composer.passes, this.effectPass.effects)
   }
 
   addGui(gui) {
