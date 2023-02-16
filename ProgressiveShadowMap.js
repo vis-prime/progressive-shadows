@@ -282,12 +282,8 @@ export class PSM {
   }
 
   async update() {
-    // if (!params.enable) return
-    // if (this.isComputing) {
-    //   return
-    // }
+    if (!params.enable) return
     this.clear()
-    // this.accumulate()
     this.framesDone = 0
   }
 
