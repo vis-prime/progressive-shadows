@@ -30,6 +30,7 @@ const GUI_FUNCTIONS = {
   bloom: null,
   ssr: null,
   ssao: null,
+  dotScreen: null,
 }
 
 const PARAMS = {
@@ -89,7 +90,14 @@ export class PostProcess {
   }
 
   setupDOTScreen() {
-    EFFECTS.dotScreen = new DotScreenEffect()
+    const effect = new DotScreenEffect()
+    EFFECTS.dotScreen = effect
+    effect.scale = 0.5
+    GUI_FUNCTIONS.dotScreen = (gui) => {
+      const folder = gui.addFolder("Dot Screen")
+      folder.add(effect, "angle", 0, Math.PI, 0.01)
+      folder.add(effect, "scale", 0, 1, 0.01)
+    }
   }
 
   setupBloom() {
@@ -149,8 +157,6 @@ export class PostProcess {
       composer.removeAllPasses()
       composer.addPass(PASSES.RENDER) // add render pass
       this.effectPass.dispose()
-
-      this.removedItems.length = 0
     }
 
     // check params and find all enabled passes

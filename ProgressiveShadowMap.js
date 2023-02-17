@@ -1,4 +1,4 @@
-import { Color } from "three"
+import { Color, DirectionalLightHelper, Plane, PlaneHelper, Vector3 } from "three"
 import { MathUtils } from "three"
 import {
   MeshLambertMaterial,
@@ -18,13 +18,12 @@ import { shaderMaterial } from "./shaderMaterial"
 
 const params = {
   enable: true,
-  frames: 100,
+  frames: 50,
   blendWindow: 100,
   lightRadius: 2,
   ambientWeight: 0.5,
-  alphaTest: 0.95,
-  debugMap: false,
-  updateDelay: 30,
+  alphaTest: 0.6,
+  debugHelpers: false,
 }
 
 export class PSM {
@@ -32,9 +31,9 @@ export class PSM {
    * PSM
    * @param {WebGLRenderer} renderer
    */
-  constructor(renderer, camera, scene, res = 1024) {
+  constructor(renderer, camera, scene, { res = 1024, shadowCatcherSize = 6 } = {}) {
     this.params = params
-    this.realScene = scene
+    this.userScene = scene
     this.camera = camera
     this.renderer = renderer
     this.res = res
@@ -47,6 +46,7 @@ export class PSM {
     this.firstUpdate = true
     this.warned = false
     this.dirLights = []
+    this.dirLightsHelpers = []
     this.lightCount = 8
     this.shadowMapRes = 512
     this.killCompute = false
@@ -54,24 +54,25 @@ export class PSM {
     this.clearColor = new Color()
     this.clearAlpha = 0
     this.progress = 0
-
+    this.shadowCatcherSize = shadowCatcherSize
     // create 8 directional lights to speed up the convergence
     for (let l = 0; l < this.lightCount; l++) {
-      const dirLight = new DirectionalLight(0xffffff, 1.0 / this.lightCount)
+      const dirLight = new DirectionalLight(0xffffff, 1 / this.lightCount)
       dirLight.name = "Dir. Light " + l
-      dirLight.position.set(2, 2, 2)
       dirLight.castShadow = true
-      dirLight.shadow.bias = 0.1
+      dirLight.shadow.bias = 0.001
       dirLight.shadow.camera.near = 0.1
-      dirLight.shadow.camera.far = 100
-      dirLight.shadow.camera.right = 5
-      dirLight.shadow.camera.left = -5
-      dirLight.shadow.camera.top = 5
-      dirLight.shadow.camera.bottom = -5
+      dirLight.shadow.camera.far = 50
+      dirLight.shadow.camera.right = this.shadowCatcherSize / 2
+      dirLight.shadow.camera.left = -this.shadowCatcherSize / 2
+      dirLight.shadow.camera.top = this.shadowCatcherSize / 2
+      dirLight.shadow.camera.bottom = -this.shadowCatcherSize / 2
       dirLight.shadow.mapSize.width = this.shadowMapRes
       dirLight.shadow.mapSize.height = this.shadowMapRes
       this.dirLights.push(dirLight)
       this.scene.add(dirLight)
+      const helpers = new DirectionalLightHelper(dirLight)
+      this.dirLightsHelpers.push(helpers)
     }
 
     /**
@@ -100,13 +101,20 @@ export class PSM {
       map: this.progressiveLightMap2.texture,
     })
     // create plane to catch shadows
-    this.shadowCatcherMesh = new Mesh(new PlaneGeometry(6, 6).rotateX(-Math.PI / 2), this.shadowCatcherMaterial)
+
+    this.shadowCatcherMesh = new Mesh(
+      new PlaneGeometry(this.shadowCatcherSize, this.shadowCatcherSize).rotateX(-Math.PI / 2),
+      this.shadowCatcherMaterial
+    )
     this.shadowCatcherMesh.position.y = 0.001 // avoid z-flicker
     this.shadowCatcherMesh.renderOrder = 1000
 
+    const plane = new Plane(new Vector3(0, 1, 0), 0)
+    this.shadowCatcherMeshHelper = new PlaneHelper(plane, this.shadowCatcherSize, 0xffff00)
+
     this.shadowCatcherMesh.name = "shadowCatcherMesh"
     this.shadowCatcherMesh.receiveShadow = true
-    this.realScene.add(this.shadowCatcherMesh)
+    this.userScene.add(this.shadowCatcherMesh)
 
     this.lightMapContainers.push({
       basicMat: this.shadowCatcherMesh.material,
@@ -228,7 +236,7 @@ export class PSM {
    * @param {boolean} visible Whether the debug plane should be visible
    * @param {Vector3} position Where the debug plane should be drawn
    */
-  showDebugLightmap(visible, position = undefined) {
+  showDebugHelpers(visible, position = undefined) {
     if (this.lightMapContainers.length == 0) {
       if (!this.warned) {
         console.warn("Call this after adding the objects!")
@@ -246,16 +254,25 @@ export class PSM {
       this.labelPlane = new PlaneGeometry(1, 1)
       this.labelMesh = new Mesh(this.labelPlane, this.labelMaterial)
       this.labelMesh.position.y = 3
-      this.realScene.add(this.labelMesh)
     }
 
     if (position != undefined) {
       this.labelMesh.position.copy(position)
     }
-
-    this.labelMesh.visible = visible
+    if (visible) {
+      this.userScene.add(this.labelMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+      this.dirLightsHelpers.forEach((h) => {
+        h.update()
+      })
+    } else {
+      this.userScene.remove(this.labelMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+    }
   }
 
+  /**
+   * randomise lights
+   * @private
+   */
   randomiseLights() {
     const length = this.lightOrigin.position.length()
     // Manually Update the Directional Lights
@@ -264,9 +281,9 @@ export class PSM {
       // Sometimes they will be uniformly sampled from the upper hemisphere
       if (Math.random() > params.ambientWeight) {
         this.dirLights[l].position.set(
-          this.lightOrigin.position.x + Math.random() * params.lightRadius,
-          this.lightOrigin.position.y + Math.random() * params.lightRadius,
-          this.lightOrigin.position.z + Math.random() * params.lightRadius
+          this.lightOrigin.position.x + MathUtils.randFloatSpread(params.lightRadius),
+          this.lightOrigin.position.y + MathUtils.randFloatSpread(params.lightRadius),
+          this.lightOrigin.position.z + MathUtils.randFloatSpread(params.lightRadius)
         )
       } else {
         // Uniform Hemispherical Surface Distribution for Ambient Occlusion
@@ -278,31 +295,24 @@ export class PSM {
           Math.sin(lambda) * length
         )
       }
+
+      if (params.debugHelpers) this.dirLightsHelpers[l].update()
     }
   }
 
+  /**
+   * Trigger an update
+   */
   async update() {
     if (!params.enable) return
     this.clear()
     this.framesDone = 0
   }
 
-  async accumulate() {
-    // Accumulate Surface Maps
-    const id = (Math.random() * 100).toFixed(3)
-    console.log("Accumulate start", id)
-    this.isComputing = true
-    for (let index = 0; index < params.frames; index++) {
-      this.shadowCatcherMesh.material.alphaTest = Math.max(0, MathUtils.mapLinear(index, 2, params.frames - 1, 0, params.alphaTest))
-      this.renderOnLightMap(this.camera, params.blendWindow)
-      this.randomiseLights()
-      this.progress = MathUtils.mapLinear(index, 0, params.frames - 1, 0, 100)
-      await sleep(params.updateDelay)
-    }
-    this.isComputing = false
-    console.log("Accumulate end", id)
-  }
-
+  /**
+   * Clear the shadow Target
+   * @private
+   */
   clear() {
     console.log("clear")
 
@@ -319,8 +329,11 @@ export class PSM {
     this.shadowCatcherMesh.material.alphaTest = 0.0
   }
 
+  /**
+   * Add this function to animate loop
+   */
   renderInAnimateLoop() {
-    if (!params.enable || this.framesDone === params.frames) return
+    if (!params.enable || this.framesDone >= params.frames) return
 
     this.shadowCatcherMesh.material.alphaTest = MathUtils.clamp(
       MathUtils.mapLinear(this.framesDone, 2, params.frames - 1, 0, params.alphaTest),
