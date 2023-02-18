@@ -6,6 +6,8 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
 import hdriUrl from "/public/aristea_wreck_1k.hdr?url"
+import * as fflate from "three/examples/jsm/libs/fflate.module"
+
 import {
   ACESFilmicToneMapping,
   EquirectangularReflectionMapping,
@@ -18,20 +20,17 @@ import {
   WebGLRenderer,
   Vector2,
   Raycaster,
-  AxesHelper,
   Group,
   BoxGeometry,
   Color,
-  ConeGeometry,
-  OctahedronGeometry,
-  CylinderGeometry,
   Vector3,
 } from "three"
 import { PSM } from "../ProgressiveShadowMap"
-let shadowMapObjects = []
+import { MathUtils } from "three"
 
 let stats,
   renderer,
+  raf,
   camera,
   scene,
   controls,
@@ -76,7 +75,7 @@ export async function initSimple(mainGui) {
   camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200)
   camera.position.set(6, 3, 6)
   camera.name = "Camera"
-
+  camera.position.set(2.0404140991899564, 2.644387886134694, 3.8683136783076355)
   // scene
   scene = new Scene()
   scene.backgroundBlurriness = 0.8
@@ -96,6 +95,7 @@ export async function initSimple(mainGui) {
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI / 1.5
   controls.target.set(0, 0, 0)
+  controls.target.set(0, 0, 0)
 
   psm = new PSM(renderer, camera, scene, { shadowCatcherSize: 8 })
   psm.lightOrigin.position.set(-3, 3, 3)
@@ -109,6 +109,7 @@ export async function initSimple(mainGui) {
       psm.update()
     }
   })
+  lightControl.size = 0.5
 
   const size = psm.shadowCatcherSize / 2
   const clampMin = new Vector3(-size, 0, -size),
@@ -116,6 +117,7 @@ export async function initSimple(mainGui) {
   lightControl.addEventListener("change", () => {
     psm.lightOrigin.position.clamp(clampMin, clampMax)
   })
+  lightControl.showY = false
 
   scene.add(lightControl)
   lightControl.attach(psm.lightOrigin)
@@ -154,6 +156,12 @@ export async function initSimple(mainGui) {
   sceneGui.add(transformControls, "mode", ["translate", "rotate", "scale"])
   sceneGui.add(scene, "backgroundBlurriness", 0, 1, 0.01)
 
+  // folder.add(record, "recordFrames")
+  // sceneGui.add(params, "printCam").onChange(() => {
+  //   console.log(camera.position.toArray())
+  //   console.log(controls.target.toArray())
+  // })
+
   await loadModels()
   animate()
 }
@@ -176,7 +184,7 @@ function render() {
 }
 
 function animate() {
-  requestAnimationFrame(animate)
+  raf = requestAnimationFrame(animate)
   render()
 }
 
@@ -187,7 +195,10 @@ function raycast() {
   // calculate objects intersecting the picking ray
   raycaster.intersectObject(mainObjects, true, intersects)
 
-  if (!intersects.length) return
+  if (!intersects.length) {
+    transformControls.detach()
+    return
+  }
 
   transformControls.attach(intersects[0].object)
 
@@ -205,33 +216,33 @@ async function loadModels() {
     new SphereGeometry(0.5).translate(0, 0.5, 0),
     new MeshStandardMaterial({ color: getRandomHexColor(), roughness: 0, metalness: 1 })
   )
+  sphere.name = "sphere"
   sphere.castShadow = true
   sphere.receiveShadow = true
-  sphere.position.set(2.5, 0, 0)
+  sphere.position.set(2, 0, -1.5)
   mainObjects.add(sphere)
-  shadowMapObjects.push(sphere)
 
   const cube = new Mesh(
     new BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
     new MeshStandardMaterial({ color: getRandomHexColor(), roughness: 0.3, metalness: 0 })
   )
+  cube.name = "cube"
   cube.castShadow = true
   cube.receiveShadow = true
-  cube.position.set(-2.5, 0, 0)
+  cube.position.set(-1.5, 0, 1.5)
   mainObjects.add(cube)
-  shadowMapObjects.push(cube)
 
   const gltf = await gltfLoader.loadAsync(gltfUrl)
   const model = gltf.scene
+  model.name = "suzanne"
   model.traverse((child) => {
     if (child.isMesh) {
       child.castShadow = true
       child.receiveShadow = true
-      shadowMapObjects.push(child)
     }
   })
   mainObjects.add(model)
-  psm.addObjectsToLightMap(shadowMapObjects)
+  psm.updateMeshList()
 }
 
 function addPsmGUI() {
@@ -259,11 +270,92 @@ function addPsmGUI() {
     psm.showDebugHelpers(v)
   })
   folder.add(psm, "update")
+  folder.add(psm, "clear")
+
   folder.add(psm, "progress", 0, 100, 1).listen().disable()
-  folder.add(psm, "saveShadowsAsImage")
+  // folder.add(psm, "saveShadowsAsImage")
 }
 
 const color = new Color()
 function getRandomHexColor() {
   return "#" + color.setHSL(Math.random(), 0.5, 0.5).getHexString()
+}
+
+const record = { recordFrames }
+async function recordFrames() {
+  const fac = 2
+  const w = 1920 * fac,
+    h = 1080 * fac
+
+  // const w = window.innerWidth,
+  // h = window.innerHeight
+  params.autoResize = false
+  cancelAnimationFrame(raf)
+  const fps = 30
+  const duration = 8
+  const frames = duration * fps
+  controls.autoRotate = true
+  renderer.setPixelRatio(1)
+  const distance = controls.getDistance()
+
+  camera.aspect = w / h
+  camera.updateProjectionMatrix()
+
+  let zipCounter = 0
+  const zipLimit = 20
+  let blobDict = {}
+  let zipCount = 0
+
+  const zipBlobDict = async () => {
+    const files = {}
+
+    for (const [name, blob] of Object.entries(blobDict)) {
+      files[name] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }]
+    }
+
+    const zip = new Blob([fflate.zipSync(files)])
+    await save(zip, zipCount + ".zip")
+
+    zipCount++
+  }
+
+  for (let i = 0; i < frames; i++) {
+    const tt = MathUtils.mapLinear(i, 0, frames - 1, 0, Math.PI * 2)
+    camera.position.set(Math.sin(tt) * distance, camera.position.y, Math.cos(tt) * distance)
+
+    renderer.setSize(w, h)
+
+    console.log(i, "/", frames)
+
+    render()
+
+    // await sleep(10)
+    blobDict["img_" + i + ".png"] = await new Promise((resolve) => renderer.domElement.toBlob(resolve, "image/png"))
+    if (zipCounter === zipLimit) {
+      await zipBlobDict()
+      blobDict = {}
+      zipCounter = 0
+    }
+    zipCounter++
+  }
+
+  // save leftover files
+  if (Object.keys(blobDict).length) {
+    console.log("saving leftover")
+    await zipBlobDict()
+    blobDict = {}
+  }
+}
+
+const link = document.createElement("a")
+
+async function save(blob, filename) {
+  console.log("Save", filename)
+  if (link.href) {
+    URL.revokeObjectURL(link.href)
+  }
+
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.dispatchEvent(new MouseEvent("click"))
 }

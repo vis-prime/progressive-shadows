@@ -57,7 +57,7 @@ const params = {
   downloadRender,
   printCam: () => {},
 }
-const axesHelper = new AxesHelper(0.1)
+const axesHelper = new AxesHelper(0.05)
 const rgbeLoader = new RGBELoader()
 const gltfLoader = new GLTFLoader()
 const draco = new DRACOLoader()
@@ -66,7 +66,6 @@ draco.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/")
 gltfLoader.setDRACOLoader(draco)
 const raycaster = new Raycaster()
 
-let shadowMapObjects = []
 const intersects = []
 
 const mainObjects = new Group()
@@ -137,12 +136,12 @@ export async function initRx7(mainGui) {
   folder.add(params, "envMapIntensity", 0, 1, 0.01).onChange(setEnvIntensity)
   folder.add(scene, "backgroundBlurriness", 0, 1, 0.01)
 
-  //   folder.add(params, "recordFrames")
-  //   folder.add(params, "downloadRender")
-  folder.add(params, "printCam").onChange(() => {
-    console.log(camera.position.toArray())
-    console.log(controls.target.toArray())
-  })
+  // folder.add(params, "recordFrames")
+  // folder.add(params, "downloadRender")
+  // folder.add(params, "printCam").onChange(() => {
+  //   console.log(camera.position.toArray())
+  //   console.log(controls.target.toArray())
+  // })
   postProcess.addGui(folder)
 
   scene.add(axesHelper)
@@ -227,7 +226,6 @@ async function doPSM() {
       if (!child.name.includes("road")) {
         child.castShadow = true
         child.receiveShadow = true
-        shadowMapObjects.push(child)
       }
     }
   })
@@ -259,7 +257,7 @@ async function doPSM() {
       RL.rotateY(wheelSpeed + additionalSpeed * 2)
       RR.rotateY(-wheelSpeed - additionalSpeed * 2)
       tex.offset.x -= 0.0007
-      bodyMat.color.setHSL((hsl.h += 0.0002), hsl.s, hsl.l)
+      bodyMat.color.setHSL((hsl.h += 1 / 3500), hsl.s, hsl.l)
     }
 
     const tiltAngle = MathUtils.degToRad(0.8)
@@ -292,7 +290,6 @@ async function doPSM() {
   control2.addEventListener("dragging-changed", (event) => {
     controls.enabled = !event.value
     if (!event.value) {
-      // psm.shadowCatcherMaterial.color.setHSL(Math.random(), 0.5, 0.5)
       psm.update()
     }
   })
@@ -317,7 +314,7 @@ async function doPSM() {
   scene.add(control2)
   control2.attach(rx7Car)
 
-  psm.addObjectsToLightMap(shadowMapObjects)
+  psm.updateMeshList()
   console.log({ psm })
   const folder = gui.addFolder("Progressive Shadows")
   folder.open()
@@ -344,22 +341,23 @@ async function doPSM() {
   })
   folder.add(psm, "update")
   folder.add(psm, "progress", 0, 100, 1).listen().disable()
-
-  // setTimeout(() => {
-  //   psm.update()
-  // }, 5000)
 }
 
 async function recordFrames() {
-  const w = 1920 * 1.5,
-    h = 1080 * 1.5
+  const fac = 2
+  const w = 1920 * fac,
+    h = 1080 * fac
+
+  // const w = window.innerWidth,
+  // h = window.innerHeight
   params.autoResize = false
   cancelAnimationFrame(raf)
   const fps = 30
-  const duration = 15
+  const duration = 8
   const frames = duration * fps
   controls.autoRotate = true
   renderer.setPixelRatio(1)
+  const distance = controls.getDistance()
 
   camera.aspect = w / h
   camera.updateProjectionMatrix()
@@ -383,6 +381,8 @@ async function recordFrames() {
   }
 
   for (let i = 0; i < frames; i++) {
+    const tt = MathUtils.mapLinear(i, 0, frames - 1, 0 + Math.PI / 2, Math.PI * 2 + Math.PI / 2)
+    camera.position.set(Math.cos(tt) * distance, camera.position.y, Math.sin(tt) * distance)
     if (params.postProcess) {
       postProcess.setSize(w, h)
     } else {
@@ -390,14 +390,11 @@ async function recordFrames() {
     }
 
     console.log(i, "/", frames)
-    // curveHandler.timeline = MathUtils.mapLinear(i, 0, frames, 0, 1)
-    // curveHandler.scrub()
 
     render()
-    // await saveImage("img_" + i)
 
+    // await sleep(10)
     blobDict["img_" + i + ".png"] = await new Promise((resolve) => renderer.domElement.toBlob(resolve, "image/png"))
-
     if (zipCounter === zipLimit) {
       await zipBlobDict()
       blobDict = {}
@@ -412,6 +409,10 @@ async function recordFrames() {
     await zipBlobDict()
     blobDict = {}
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function downloadRender() {

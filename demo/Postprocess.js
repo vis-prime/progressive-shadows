@@ -85,6 +85,7 @@ export class PostProcess {
     this.setupDOF()
     this.updateEffectPasses()
   }
+
   setSize(x = window.innerWidth, y = window.innerHeight) {
     composer.setSize(x, y)
   }
