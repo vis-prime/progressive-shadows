@@ -92,7 +92,6 @@ export async function initSimple(mainGui) {
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true // an animation loop is required when either damping or auto-rotation are enabled
   controls.dampingFactor = 0.05
-  // controls.screenSpacePanning = true
   controls.minDistance = 0.1
   controls.maxDistance = 100
   controls.maxPolarAngle = Math.PI / 1.5
@@ -222,36 +221,6 @@ async function loadModels() {
   mainObjects.add(cube)
   shadowMapObjects.push(cube)
 
-  const octahedron = new Mesh(
-    new OctahedronGeometry(0.5).translate(0, 0.5, 0),
-    new MeshStandardMaterial({ color: getRandomHexColor(), roughness: 0.5, metalness: 1 })
-  )
-  octahedron.castShadow = true
-  octahedron.receiveShadow = true
-  octahedron.position.set(-2.5, 0, 2.5)
-  mainObjects.add(octahedron)
-  shadowMapObjects.push(octahedron)
-
-  const cone = new Mesh(
-    new ConeGeometry(0.5, 1, 32).translate(0, 0.5, 0),
-    new MeshStandardMaterial({ color: getRandomHexColor(), roughness: 0.5 })
-  )
-  cone.castShadow = true
-  cone.receiveShadow = true
-  cone.position.set(0, 0, -2)
-  mainObjects.add(cone)
-  shadowMapObjects.push(cone)
-
-  const cylinder = new Mesh(
-    new CylinderGeometry(0.5, 0.5, 1, 32).translate(0, 0.5, 0),
-    new MeshStandardMaterial({ color: getRandomHexColor(), roughness: 0 })
-  )
-  cylinder.castShadow = true
-  cylinder.receiveShadow = true
-  cylinder.position.set(2, 0, -2)
-  mainObjects.add(cylinder)
-  shadowMapObjects.push(cylinder)
-
   const gltf = await gltfLoader.loadAsync(gltfUrl)
   const model = gltf.scene
   model.traverse((child) => {
@@ -291,6 +260,7 @@ function addPsmGUI() {
   })
   folder.add(psm, "update")
   folder.add(psm, "progress", 0, 100, 1).listen().disable()
+  folder.add(psm, "saveShadowsAsImage")
 }
 
 const color = new Color()

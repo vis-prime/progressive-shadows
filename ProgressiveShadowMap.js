@@ -14,15 +14,16 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
 } from "three"
+import { DiscardMaterial } from "./DiscardMaterial"
 import { shaderMaterial } from "./shaderMaterial"
 
 const params = {
   enable: true,
-  frames: 50,
-  blendWindow: 100,
+  frames: 40,
+  blendWindow: 40,
   lightRadius: 2,
   ambientWeight: 0.5,
-  alphaTest: 0.6,
+  alphaTest: 1,
   debugHelpers: false,
 }
 
@@ -55,6 +56,8 @@ export class PSM {
     this.clearAlpha = 0
     this.progress = 0
     this.shadowCatcherSize = shadowCatcherSize
+    this.discardMaterial = new DiscardMaterial()
+
     // create 8 directional lights to speed up the convergence
     for (let l = 0; l < this.lightCount; l++) {
       const dirLight = new DirectionalLight(0xffffff, 1 / this.lightCount)
@@ -100,8 +103,8 @@ export class PSM {
     this.shadowCatcherMaterial = new SoftShadowMaterial({
       map: this.progressiveLightMap2.texture,
     })
-    // create plane to catch shadows
 
+    // create plane to catch shadows
     this.shadowCatcherMesh = new Mesh(
       new PlaneGeometry(this.shadowCatcherSize, this.shadowCatcherSize).rotateX(-Math.PI / 2),
       this.shadowCatcherMaterial
@@ -204,10 +207,11 @@ export class PSM {
     // Set each object's material to the UV Unwrapped Surface Mapping Version
     for (let l = 0; l < this.lightMapContainers.length; l++) {
       this.targetMat.uniforms.averagingWindow = { value: blendWindow }
-      this.lightMapContainers[l].object.material = this.targetMat
+      this.lightMapContainers[l].object.material = this.discardMaterial
       this.lightMapContainers[l].object.oldFrustumCulled = this.lightMapContainers[l].object.frustumCulled
       this.lightMapContainers[l].object.frustumCulled = false
     }
+    this.shadowCatcherMesh.material = this.targetMat
 
     // Ping-pong two surface buffers for reading/writing
     const activeMap = this.buffer1Active ? this.progressiveLightMap1 : this.progressiveLightMap2
@@ -226,6 +230,7 @@ export class PSM {
       this.lightMapContainers[l].object.material = this.lightMapContainers[l].basicMat
       this.lightMapContainers[l].object.oldScene.attach(this.lightMapContainers[l].object)
     }
+    this.shadowCatcherMesh.material = this.shadowCatcherMaterial
 
     // Restore the original Render Target
     this.renderer.setRenderTarget(null)
@@ -347,6 +352,57 @@ export class PSM {
 
     this.framesDone++
   }
+
+  saveShadowsAsImage() {
+    return new Promise(async (resolve) => {
+      console.log(this.progressiveLightMap1)
+      const imageArray = new Uint8Array(this.progressiveLightMap1.width * this.progressiveLightMap1.height * 4)
+      this.renderer.readRenderTargetPixels(
+        this.progressiveLightMap1,
+        0,
+        0,
+        this.progressiveLightMap1.width,
+        this.progressiveLightMap1.height,
+        imageArray
+      )
+      console.log({ imageArray })
+      var link = document.createElement("a")
+      link.download = "render" + ".png"
+
+      let pixelHasValue = false
+      for (let index = 0; index < imageArray.length; index++) {
+        if (imageArray[index] !== 0) {
+          pixelHasValue = true
+          console.log("Pixel has value", imageArray[index])
+          break
+        }
+      }
+
+      if (!pixelHasValue) {
+        return
+      }
+      // render the equirectangular image
+      const imageData = new ImageData(new Uint8ClampedArray(imageArray), this.progressiveLightMap1.width, this.progressiveLightMap1.height)
+      console.log({ imageData })
+
+      // paste image on canvas
+      const canvas = document.createElement("canvas")
+      canvas.width = imageData.width
+      canvas.height = imageData.height
+      const ctx = canvas.getContext("2d")
+      ctx.putImageData(imageData, 0, 0)
+
+      // create image blob from canvas
+
+      // download image file to system
+      link.href = canvas.toDataURL("image/png")
+
+      link.target = "_blank"
+      link.click()
+
+      resolve()
+    })
+  }
 }
 
 function sleep(ms) {
@@ -382,3 +438,16 @@ const SoftShadowMaterial = shaderMaterial(
      #include <encodings_fragment>
    }`
 )
+
+const link = document.createElement("a")
+
+async function save(blob, filename) {
+  console.log("Save", filename)
+  if (link.href) {
+    URL.revokeObjectURL(link.href)
+  }
+
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.dispatchEvent(new MouseEvent("click"))
+}

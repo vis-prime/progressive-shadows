@@ -1,5 +1,4 @@
-import { Scene } from "@gltf-transform/core"
-import { Camera, DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, WebGLRenderer } from "three"
+import { Camera, DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, WebGLRenderer, Scene } from "three"
 
 export class ProgressiveShadows extends Group {
   /**

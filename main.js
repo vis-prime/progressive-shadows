@@ -6,12 +6,12 @@ import { GUI } from "lil-gui"
 
 let url_string = window.location.href
 let url = new URL(url_string)
-const params = {
-  sceneName: url.searchParams.get("scene") || "",
-}
 const AllScenes = {
   RX7: "rx7",
   Simple: "simple",
+}
+const params = {
+  sceneName: url.searchParams.get("scene") || AllScenes.Simple,
 }
 
 function getKeyByValue(object, value) {
@@ -38,9 +38,15 @@ function loadScene(path) {
       updatePageDesc(AllScenes.RX7)
       break
     }
-    default: {
+
+    case AllScenes.Simple: {
       initSimple(gui)
       updatePageDesc(AllScenes.Simple)
+      break
+    }
+
+    default: {
+      console.warn("invalid scene")
       break
     }
   }
