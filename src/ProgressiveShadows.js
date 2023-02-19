@@ -1,26 +1,35 @@
 import {
-  PlaneHelper,
-  Plane,
-  Vector3,
   Color,
-  Camera,
+  DirectionalLightHelper,
+  Plane,
+  PlaneHelper,
+  Vector3,
+  MeshLambertMaterial,
   DirectionalLight,
+  DoubleSide,
+  FloatType,
   Group,
+  HalfFloatType,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
-  WebGLRenderer,
   Scene,
+  WebGLRenderer,
   WebGLRenderTarget,
-  MathUtils,
   ShaderMaterial,
+  MathUtils,
   UniformsUtils,
-  MeshLambertMaterial,
-  DoubleSide,
-  FloatType,
-  HalfFloatType,
-  DirectionalLightHelper,
 } from "three"
+
+const params = {
+  enable: true,
+  frames: 40,
+  blendWindow: 40,
+  lightRadius: 2,
+  ambientWeight: 0.5,
+  alphaTest: 0.98,
+  debugHelpers: false,
+}
 
 export class ProgressiveShadows {
   /**
@@ -42,7 +51,6 @@ export class ProgressiveShadows {
   constructor(
     renderer,
     scene,
-    camera,
     {
       resolution = 1024,
       shadowMapRes = 512,
@@ -56,191 +64,106 @@ export class ProgressiveShadows {
       alphaTest = 0.98,
     } = {}
   ) {
-    console.log("constructor", {
-      renderer,
-      scene,
-      camera,
-
-      resolution,
-      shadowMapRes,
-      shadowBias,
-      lightCount,
-      size,
-      frames,
-      // blendWindow ,
-      lightRadius,
-      ambientWeight,
-      alphaTest,
-    })
-
-    /**
-     * WebGLRenderer
-     * @private
-     */
+    this.params = params
+    this.userScene = scene
     this.renderer = renderer
-
-    /**
-     * Scene
-     * @private
-     */
+    this.res = resolution
+    this.lightMapContainers = []
+    this.compiled = false
     this.scene = scene
+    this.scene.background = null
+    this.tinyTarget = new WebGLRenderTarget(1, 1)
+    this.buffer1Active = false
+    this.firstUpdate = true
+    this.warned = false
+    this.dirLights = []
+    this.dirLightsHelpers = []
+    this.lightCount = 8
+    this.shadowMapRes = 512
+    this.killCompute = false
+    this.isComputing = false
+    this.clearColor = new Color()
+    this.clearAlpha = 0
+    this.progress = 0
+    this.shadowCatcherSize = size
+    this.discardMaterial = new DiscardMaterial()
+    this.lights = []
+    this.meshes = []
+    this.objectsToHide = []
 
     /**
-     * Camera
-     * @private
-     */
-    this.camera = camera
-
-    /**
-     * Main toggle
-     */
-    this.enabled = true
-
-    /**
-     * Params , these can be edited directly , next update will reflect the changes
-     */
-    this.params = {
-      frames,
-      lightRadius,
-      ambientWeight,
-      alphaTest,
-      progress: 0,
-    }
-
-    /**
-     * Internal Params
-     * @private
-     */
-    this.internalParams = {
-      showHelpers: false,
-      compiled: false,
-      buffer1Active: false,
-      firstUpdate: true,
-      framesRendered: 0,
-    }
-
-    /**
-     * All directional lights to cast shadows
-     * @type {Group}
-     * @private
-     */
-    this.mainGroup = new Group()
-    this.mainGroup.name = "progressive_shadows"
-    this.scene.add(this.mainGroup)
-
-    /**
-     * All directional lights to cast shadows are in this group
-     * @type {Group<DirectionalLight>}
-     * @private
-     */
-    this.dirLightsGroup = new Group()
-    this.dirLightsGroup.name = "dir_lights"
-    this.mainGroup.add(this.dirLightsGroup)
-
-    // create the directional lights to speed up the convergence
-    const shadowRadius = size / 2
-    for (let i = 0; i < lightCount; i++) {
-      const dirLight = new DirectionalLight(0xffffff, 1.0 / lightCount)
-      dirLight.name = "dir_light_" + i
-      dirLight.position.set(2, 2, 2)
-      dirLight.castShadow = true
-      dirLight.shadow.bias = shadowBias
-      dirLight.shadow.camera.near = 0.1
-      dirLight.shadow.camera.far = 100
-      dirLight.shadow.camera.right = shadowRadius
-      dirLight.shadow.camera.left = -shadowRadius
-      dirLight.shadow.camera.top = shadowRadius
-      dirLight.shadow.camera.bottom = -shadowRadius
-      dirLight.shadow.mapSize.width = shadowMapRes
-      dirLight.shadow.mapSize.height = shadowMapRes
-      this.dirLightsGroup.add(dirLight)
-    }
-
-    /**
-     * Light position control
-     * Move this object to where you want the light to cast from
+     * light position control
      * @type {Group}
      */
     this.lightOrigin = new Group()
-    this.lightOrigin.name = "light_origin"
+    this.lightOrigin.name = "lightOrigin"
     this.lightOrigin.position.set(5, 3, 1)
-    this.mainGroup.add(this.lightOrigin)
+    this.scene.add(this.lightOrigin)
 
-    const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? HalfFloatType : FloatType // to combat phone issue
+    this.lightGroup = new Group()
+    this.scene.add(this.lightGroup)
 
-    /**
-     * Render target 1
-     * @private
-     */
-    this.progressiveLightMap1 = new WebGLRenderTarget(resolution, resolution, { type: format, encoding: this.renderer.outputEncoding })
-    /**
-     * Render target 2
-     * @private
-     */
-    this.progressiveLightMap2 = new WebGLRenderTarget(resolution, resolution, { type: format, encoding: this.renderer.outputEncoding })
+    // create 8 directional lights to speed up the convergence
+    for (let l = 0; l < this.lightCount; l++) {
+      const dirLight = new DirectionalLight(0xffffff, 1 / this.lightCount)
+      dirLight.name = "Dir. Light " + l
+      dirLight.castShadow = true
+      dirLight.shadow.bias = 0.001
+      dirLight.shadow.camera.near = 0.1
+      dirLight.shadow.camera.far = 50
+      dirLight.shadow.camera.right = this.shadowCatcherSize / 2
+      dirLight.shadow.camera.left = -this.shadowCatcherSize / 2
+      dirLight.shadow.camera.top = this.shadowCatcherSize / 2
+      dirLight.shadow.camera.bottom = -this.shadowCatcherSize / 2
+      dirLight.shadow.mapSize.width = this.shadowMapRes
+      dirLight.shadow.mapSize.height = this.shadowMapRes
+      this.dirLights.push(dirLight)
+      this.lightGroup.add(dirLight)
+      const helpers = new DirectionalLightHelper(dirLight)
+      this.dirLightsHelpers.push(helpers)
+    }
 
-    /**
-     * Material used by meshShadowCatcher
-     * @type {SoftShadowMaterial}
-     * @private
-     */
-    this.materialShadowCatcher = new SoftShadowMaterial({
+    // make all lights point to a single source
+    const lightTarget = new Group()
+    lightTarget.position.set(0, 0, 0)
+    for (let l = 0; l < this.dirLights.length; l++) {
+      this.dirLights[l].target = lightTarget
+    }
+    this.scene.add(lightTarget)
+
+    // Create the Progressive LightMap Texture
+    const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? HalfFloatType : FloatType
+    this.progressiveLightMap1 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
+    this.progressiveLightMap2 = new WebGLRenderTarget(this.res, this.res, { type: format, encoding: this.renderer.outputEncoding })
+
+    this.shadowCatcherMaterial = new SoftShadowMaterial({
       map: this.progressiveLightMap2.texture,
     })
 
-    /**
-     * Mesh for shadow catching
-     * @type {Mesh}
-     */
-    this.meshShadowCatcher = new Mesh(new PlaneGeometry(size, size).rotateX(-Math.PI / 2), this.materialShadowCatcher)
-    this.meshShadowCatcher.name = "shadow_catcher"
-    this.meshShadowCatcher.position.y = 0.001 // avoid z-flicker
-    this.mainGroup.add(this.meshShadowCatcher)
+    // create plane to catch shadows
+    this.shadowCatcherMesh = new Mesh(
+      new PlaneGeometry(this.shadowCatcherSize, this.shadowCatcherSize).rotateX(-Math.PI / 2),
+      this.shadowCatcherMaterial
+    )
+    this.shadowCatcherMesh.position.y = 0.001 // avoid z-flicker
+    // this.shadowCatcherMesh.renderOrder = 1000
 
-    /**
-     * Helper lines and stuff
-     * @private
-     */
-    this.helperObjects = new Group()
-    this.helperObjects.name = "helper_items"
+    const plane = new Plane(new Vector3(0, 1, 0), 0)
+    this.shadowCatcherMeshHelper = new PlaneHelper(plane, this.shadowCatcherSize, 0xffff00)
 
-    const lineShadowPlane = new PlaneHelper(new Plane(new Vector3(0, 1, 0), 0), size, 0x808080)
-    for (const light of this.dirLightsGroup.children) {
-      this.helperObjects.add(new DirectionalLightHelper(light))
-    }
+    this.shadowCatcherMesh.name = "shadowCatcherMesh"
+    this.shadowCatcherMesh.receiveShadow = true
+    this.userScene.add(this.shadowCatcherMesh)
 
-    this.helperObjects.add(lineShadowPlane)
-    this.mainGroup.add(this.helperObjects)
-    console.log(this.mainGroup)
+    this.lightMapContainers.push({
+      basicMat: this.shadowCatcherMesh.material,
+      object: this.shadowCatcherMesh,
+    })
 
-    /**
-     * Material will be ignored by renderTarget render
-     * @private
-     */
-    this.discardMaterial = new DiscardMaterial()
-
-    /**
-     * Backup of user's settings
-     * @private
-     */
-    this.backups = {
-      clearColor: new Color(),
-      clearAlpha: 0,
-      background: null,
-
-      lights: [],
-      meshes: [],
-      objectsToHide: [],
-    }
-
-    /**
-     * Backup of user's settings
-     * @private
-     */
-    // Inject some spicy new logic into a standard Lambert material
+    // Inject some spicy new logic into a standard phong material
     this.targetMat = new MeshLambertMaterial({ fog: false })
-    // this.previousShadowMap = { value: this.progressiveLightMap1.texture }
-    // this.averagingWindow = { value: 100 }
+    this.previousShadowMap = { value: this.progressiveLightMap1.texture }
+    this.averagingWindow = { value: 100 }
     this.targetMat.uniforms = {}
     this.targetMat.onBeforeCompile = (shader) => {
       // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
@@ -262,37 +185,365 @@ export class ProgressiveShadows {
       shader.uniforms.previousShadowMap = {
         value: this.progressiveLightMap1.texture,
       }
-      shader.uniforms.averagingWindow = { value: frames }
+      shader.uniforms.averagingWindow = { value: 100 }
 
       this.targetMat.uniforms = shader.uniforms
 
       // Set the new Shader to this
       this.targetMat.userData.shader = shader
-      // this.compiled = true
+      this.compiled = true
+    }
+
+    this.framesDone = 0
+  }
+
+  /**
+   * Sets these objects' materials' lightMaps and modifies their uv2's.
+   * @param {Object3D} objects An array of objects and lights to set up your lightmap.
+   */
+  addObjectsToLightMap(objects) {
+    for (let ob = 0; ob < objects.length; ob++) {
+      const object = objects[ob]
+      console.log(object.name)
+
+      if (!object.geometry.hasAttribute("uv")) {
+        console.warn("All lightmap objects need UVs!")
+        continue
+      }
+
+      this.lightMapContainers.push({
+        basicMat: object.material,
+        object: object,
+      })
+
+      this.compiled = false
     }
   }
 
-  // Public
+  /**
+   * This function renders each mesh one at a time into their respective surface maps
+   * @param {Camera} camera Standard Rendering Camera
+   */
+  renderOnLightMap(camera, blendWindow) {
+    // Steal the Object3D from the real world to our special dimension
+    // for (let l = 0; l < this.lightMapContainers.length; l++) {
+    //   this.lightMapContainers[l].object.oldScene = this.lightMapContainers[l].object.parent
+    //   this.scene.attach(this.lightMapContainers[l].object)
+    // }
+
+    // Render once normally to initialize everything
+    // if (this.firstUpdate) {
+    //   this.renderer.setRenderTarget(this.tinyTarget) // Tiny for Speed
+    //   this.renderer.render(this.scene, camera)
+    //   this.firstUpdate = false
+    // }
+
+    // Set each object's material to the UV Unwrapped Surface Mapping Version
+    // for (let l = 0; l < this.lightMapContainers.length; l++) {
+    //
+    //   this.lightMapContainers[l].object.material = this.discardMaterial
+    //   this.lightMapContainers[l].object.oldFrustumCulled = this.lightMapContainers[l].object.frustumCulled
+    //   this.lightMapContainers[l].object.frustumCulled = false
+    // }
+
+    this.prepare()
+    this.targetMat.uniforms.averagingWindow = { value: params.blendWindow }
+
+    // Ping-pong two surface buffers for reading/writing
+    const activeMap = this.buffer1Active ? this.progressiveLightMap1 : this.progressiveLightMap2
+    const inactiveMap = this.buffer1Active ? this.progressiveLightMap2 : this.progressiveLightMap1
+
+    // Render the object's surface maps
+    this.renderer.setRenderTarget(activeMap)
+    this.targetMat.uniforms.previousShadowMap = { value: inactiveMap.texture }
+
+    this.buffer1Active = !this.buffer1Active
+    this.renderer.render(this.scene, camera)
+
+    // Restore the object's Real-time Material and add it back to the original world
+    // for (let l = 0; l < this.lightMapContainers.length; l++) {
+    //   this.lightMapContainers[l].object.frustumCulled = this.lightMapContainers[l].object.oldFrustumCulled
+    //   this.lightMapContainers[l].object.material = this.lightMapContainers[l].basicMat
+    // this.lightMapContainers[l].object.oldScene.attach(this.lightMapContainers[l].object)
+    // }
+    this.finish()
+
+    // Restore the original Render Target
+    this.renderer.setRenderTarget(null)
+  }
+
+  /** DEBUG
+   * Draw the lightmap in the main scene.  Call this after adding the objects to it.
+   * @param {boolean} visible Whether the debug plane should be visible
+   * @param {Vector3} position Where the debug plane should be drawn
+   */
+  showDebugHelpers(visible, position = undefined) {
+    if (this.lightMapContainers.length == 0) {
+      if (!this.warned) {
+        console.warn("Call this after adding the objects!")
+        this.warned = true
+      }
+
+      return
+    }
+
+    if (this.debugMesh == null) {
+      this.debugMesh = new Mesh(
+        new PlaneGeometry(1, 1),
+        new MeshBasicMaterial({
+          map: this.progressiveLightMap1.texture,
+          side: DoubleSide,
+        })
+      )
+      this.debugMesh.position.y = 3
+    }
+
+    if (position != undefined) {
+      this.debugMesh.position.copy(position)
+    }
+    if (visible) {
+      this.userScene.add(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+      this.dirLightsHelpers.forEach((h) => {
+        h.update()
+      })
+    } else {
+      this.userScene.remove(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+    }
+  }
+
+  /**
+   * randomise lights
+   * @private
+   */
+  randomiseLights() {
+    const length = this.lightOrigin.position.length()
+    // Manually Update the Directional Lights
+    for (let l = 0; l < this.dirLights.length; l++) {
+      // Sometimes they will be sampled from the target direction
+      // Sometimes they will be uniformly sampled from the upper hemisphere
+      if (Math.random() > params.ambientWeight) {
+        this.dirLights[l].position.set(
+          this.lightOrigin.position.x + MathUtils.randFloatSpread(params.lightRadius),
+          this.lightOrigin.position.y + MathUtils.randFloatSpread(params.lightRadius),
+          this.lightOrigin.position.z + MathUtils.randFloatSpread(params.lightRadius)
+        )
+      } else {
+        // Uniform Hemispherical Surface Distribution for Ambient Occlusion
+        const lambda = Math.acos(2 * Math.random() - 1) - 3.14159 / 2.0
+        const phi = 2 * 3.14159 * Math.random()
+        this.dirLights[l].position.set(
+          Math.cos(lambda) * Math.cos(phi) * length,
+          Math.abs(Math.cos(lambda) * Math.sin(phi) * length),
+          Math.sin(lambda) * length
+        )
+      }
+
+      if (params.debugHelpers) this.dirLightsHelpers[l].update()
+    }
+  }
+
+  /**
+   * Trigger an update
+   */
+  async recalculate() {
+    if (!params.enable) return
+    this.clear()
+    this.framesDone = 0
+  }
+
+  /**
+   * Prepare all meshes/lights
+   */
+  prepare() {
+    this.lights.forEach((l) => (l.object.intensity = 0))
+    this.meshes.forEach((m) => (m.object.material = this.discardMaterial))
+    this.objectsToHide.forEach((m) => (m.object.visible = false))
+
+    this.lightGroup.visible = true
+    this.shadowCatcherMesh.material = this.targetMat
+    if (params.debugHelpers) this.showDebugHelpers(false)
+  }
+
+  /**
+   * Restore all meshes/lights
+   */
+  finish() {
+    this.lights.forEach((l) => (l.object.intensity = l.intensity))
+    this.meshes.forEach((m) => (m.object.material = m.material))
+    this.objectsToHide.forEach((m) => (m.object.visible = m.visible))
+    this.lightGroup.visible = false
+    this.shadowCatcherMesh.material = this.shadowCatcherMaterial
+    if (params.debugHelpers) this.showDebugHelpers(true)
+  }
+
+  /**
+   * Clear the shadow Target & update mesh list
+   *
+   */
+  clear() {
+    console.log("clear")
+
+    this.renderer.getClearColor(this.clearColor)
+    this.clearAlpha = this.renderer.getClearAlpha()
+    this.renderer.setClearColor("black", 1) // setting to any other color/alpha will decrease shadow's impact when accumulating
+    this.renderer.setRenderTarget(this.progressiveLightMap1)
+    this.renderer.clear()
+    this.renderer.setRenderTarget(this.progressiveLightMap2)
+    this.renderer.clear()
+    this.renderer.setRenderTarget(null)
+    this.renderer.setClearColor(this.clearColor, this.clearAlpha)
+
+    this.shadowCatcherMesh.material.alphaTest = 0.0
+
+    this.updateShadowObjectsList()
+  }
+
+  /**
+   * Update list of meshes which need to be hidden
+   */
   updateShadowObjectsList() {
-    console.log("updateShadowObjectsList")
+    this.lights.length = 0
+    this.meshes.length = 0
+    this.objectsToHide.length = 0
+    this.scene.traverse((object) => {
+      if (object.isMesh && object !== this.shadowCatcherMesh) {
+        if (object.castShadow) {
+          this.meshes.push({ object, material: object.material })
+        } else {
+          this.objectsToHide.push({ object, visible: object.visible })
+        }
+      } else if (object.isTransformControls) {
+        this.objectsToHide.push({ object, visible: object.visible })
+      } else if (object.isLight && object.parent !== this.lightGroup) {
+        this.lights.push({ object, intensity: object.intensity })
+      }
+    })
+
+    // console.log({ meshes: this.meshes, lights: this.lights, objectsToHide: this.objectsToHide })
   }
 
-  showDebugHelpers() {}
+  /**
+   * Add this function to animate loop
+   */
+  update(camera) {
+    if (!params.enable || this.framesDone >= params.frames) return
+
+    this.shadowCatcherMesh.material.alphaTest = MathUtils.clamp(
+      MathUtils.mapLinear(this.framesDone, 2, params.frames - 1, 0, params.alphaTest),
+      0,
+      1
+    )
+
+    this.renderOnLightMap(camera)
+    this.randomiseLights()
+    this.progress = MathUtils.mapLinear(this.framesDone, 0, params.frames - 1, 0, 100)
+
+    this.framesDone++
+  }
+
+  addGui(gui) {
+    const folder = gui.addFolder("Progressive Shadows")
+    folder.open()
+
+    folder.add(this.params, "enable")
+    folder.add(this.params, "frames", 10, 500, 1)
+    folder.add(this.params, "blendWindow", 1, 500, 1)
+    folder.add(this.params, "lightRadius", 0, 30, 0.1)
+    folder.add(this.params, "ambientWeight", 0, 1, 0.1)
+    folder.addColor(this.shadowCatcherMaterial, "color").listen()
+
+    folder.add(this.shadowCatcherMaterial, "blend", 0, 2, 0.01)
+    folder.add(this.shadowCatcherMaterial, "opacity", 0, 1, 0.01)
+
+    folder
+      .add(this.params, "alphaTest", 0, 1, 0.01)
+
+      .onChange((v) => {
+        this.shadowCatcherMaterial.alphaTest = v
+      })
+
+    folder.add(this.params, "debugHelpers").onChange((v) => {
+      this.showDebugHelpers(v)
+    })
+    folder.add(this, "update")
+    folder.add(this, "clear")
+
+    folder.add(this, "progress", 0, 100, 1).listen().disable()
+    // folder.add(psm, "saveShadowsAsImage")
+  }
 
   /**
-   * Put this function inside the request animation frame loop
+   * Not working
+   * @returns
    */
-  recalculate() {
-    console.log("updateShadowObjectsList")
+  saveShadowsAsImage() {
+    return new Promise(async (resolve) => {
+      console.log(this.progressiveLightMap1)
+      const imageArray = new Uint8Array(this.progressiveLightMap1.width * this.progressiveLightMap1.height * 4)
+      this.renderer.readRenderTargetPixels(
+        this.progressiveLightMap1,
+        0,
+        0,
+        this.progressiveLightMap1.width,
+        this.progressiveLightMap1.height,
+        imageArray
+      )
+      console.log({ imageArray })
+      var link = document.createElement("a")
+      link.download = "render" + ".png"
+
+      let pixelHasValue = false
+      for (let index = 0; index < imageArray.length; index++) {
+        if (imageArray[index] !== 0) {
+          pixelHasValue = true
+          console.log("Pixel has value", imageArray[index])
+          break
+        }
+      }
+
+      if (!pixelHasValue) {
+        return
+      }
+
+      // render the equirectangular image
+      const imageData = new ImageData(new Uint8ClampedArray(imageArray), this.progressiveLightMap1.width, this.progressiveLightMap1.height)
+      console.log({ imageData })
+
+      // paste image on canvas
+      const canvas = document.createElement("canvas")
+      canvas.width = imageData.width
+      canvas.height = imageData.height
+      const ctx = canvas.getContext("2d")
+      ctx.putImageData(imageData, 0, 0)
+
+      // create image blob from canvas
+
+      // download image file to system
+      link.href = canvas.toDataURL("image/png")
+
+      link.target = "_blank"
+      link.click()
+
+      resolve()
+    })
   }
-  randomiseLights() {}
-  prepare() {}
-  finish() {}
-  /**
-   * Call this in the requestAnimationFrame loop
-   */
-  update() {}
-  clear() {}
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const link = document.createElement("a")
+
+async function save(blob, filename) {
+  console.log("Save", filename)
+  if (link.href) {
+    URL.revokeObjectURL(link.href)
+  }
+
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  link.dispatchEvent(new MouseEvent("click"))
 }
 
 /**
