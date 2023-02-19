@@ -1,6 +1,10 @@
-import { Color, DirectionalLightHelper, Plane, PlaneHelper, Vector3 } from "three"
-import { MathUtils } from "three"
 import {
+  Color,
+  DirectionalLightHelper,
+  Plane,
+  PlaneHelper,
+  Vector3,
+  MathUtils,
   MeshLambertMaterial,
   DirectionalLight,
   DoubleSide,
@@ -40,7 +44,7 @@ export class PSM {
     this.res = res
     this.lightMapContainers = []
     this.compiled = false
-    this.scene = scene //new Scene()
+    this.scene = scene
     this.scene.background = null
     this.tinyTarget = new WebGLRenderTarget(1, 1)
     this.buffer1Active = false
@@ -72,7 +76,7 @@ export class PSM {
 
     this.lightGroup = new Group()
     this.scene.add(this.lightGroup)
-    this.lightOrigin.visible = false
+
     // create 8 directional lights to speed up the convergence
     for (let l = 0; l < this.lightCount; l++) {
       const dirLight = new DirectionalLight(0xffffff, 1 / this.lightCount)
@@ -116,7 +120,7 @@ export class PSM {
       this.shadowCatcherMaterial
     )
     this.shadowCatcherMesh.position.y = 0.001 // avoid z-flicker
-    this.shadowCatcherMesh.renderOrder = 1000
+    // this.shadowCatcherMesh.renderOrder = 1000
 
     const plane = new Plane(new Vector3(0, 1, 0), 0)
     this.shadowCatcherMeshHelper = new PlaneHelper(plane, this.shadowCatcherSize, 0xffff00)
