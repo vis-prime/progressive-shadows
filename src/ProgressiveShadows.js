@@ -13,8 +13,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
-  Scene,
-  WebGLRenderer,
   WebGLRenderTarget,
   ShaderMaterial,
   MathUtils,
@@ -22,23 +20,7 @@ import {
   Camera,
 } from "three"
 
-export class ProgressiveShadows {
-  /**
-   * Generate Progressive shadows
-   * @param {WebGLRenderer} renderer For rendering shadows
-   * @param {Scene} scene To get list of shadow mesh
-   * @param {Object} [userParams] Custom options
-   * @param {Number} [userParams.resolution] RenderTarget resolution
-   * @param {Number} [userParams.shadowMapRes] DirectionLight ShadowMap resolution
-   * @param {Number} [userParams.shadowBias] ShadowBias of dir lights
-   * @param {Number} [userParams.lightCount] DirectionLight count
-   * @param {Number} [userParams.size] meshShadowCatcher size
-   * @param {Number} [userParams.frames] Number of frames to run accumulate shadows
-   * @param {Number} [userParams.lightRadius] DirectionLight spread , smaller values gives sharper shadows
-   * @param {Number} [userParams.ambientWeight] Ratio between directional light vs ambient light
-   * @param {Number} [userParams.alphaTest] Alpha test value to be performed on materialShadowCatcher
-   * @param {Number} [userParams.showHelpers] show line showHelpers to visualize all hidden objects & renderTarget
-   */
+class ProgressiveShadows {
   constructor(
     renderer,
     scene,
@@ -65,80 +47,32 @@ export class ProgressiveShadows {
       debugHelpers: false,
       size,
     }
-    /**
-     * @private
-     */
     this.scene = scene
-    /**
-     * @private
-     */
     this.renderer = renderer
-    /**
-     * @private
-     */
     this.buffer1Active = false
-    /**
-     * @private
-     */
     this.dirLights = []
-    /**
-     * @private
-     */
     this.dirLightsHelpers = []
-    /**
-     * @private
-     */
     this.clearColor = new Color()
-    /**
-     * @private
-     */
     this.clearAlpha = 0
-    /**
-     * @private
-     */
     this.progress = 0
-    /**
-     * @private
-     */
     this.discardMaterial = new DiscardMaterial()
-    /**
-     * @private
-     */
     this.lights = []
-    /**
-     * @private
-     */
     this.meshes = []
-    /**
-     * @private
-     */
     this.objectsToHide = []
-    /**
-     * @private
-     */
     this.framesDone = 0
-    /**
-     * All objects3d made by this class is added here , which is added to the scene
-     * @type {Group}
-     * @private
-     */
+
+    // All objects3d made by this class is added here , which is added to the scene
     this.progShadowGrp = new Group()
     this.progShadowGrp.name = "progressive_shadow_assets"
     this.scene.add(this.progShadowGrp)
 
-    /**
-     * light position control (only the position of this object used , lights are added to light group)
-     * @private
-     */
+    //light position control (only the position of this object used , lights are added to light group)
     this.lightOrigin = new Group()
     this.lightOrigin.name = "light_origin"
     this.lightOrigin.position.set(size, size, size)
     this.progShadowGrp.add(this.lightOrigin)
 
-    /**
-     * All lights are added to this group
-     * @private
-     */
+    // All lights are added to this group
     this.lightGroup = new Group()
     this.lightGroup.name = "all_dir_lights"
     this.progShadowGrp.add(this.lightGroup)
@@ -165,52 +99,28 @@ export class ProgressiveShadows {
 
     // Create the Progressive LightMap Texture
     const format = /(Android|iPad|iPhone|iPod)/g.test(navigator.userAgent) ? HalfFloatType : FloatType
-    /**
-     * @private
-     */
     this.progressiveLightMap1 = new WebGLRenderTarget(resolution, resolution, { type: format, encoding: this.renderer.outputEncoding })
-    /**
-     * @private
-     */
     this.progressiveLightMap2 = new WebGLRenderTarget(resolution, resolution, { type: format, encoding: this.renderer.outputEncoding })
 
-    /**
-     * Material applied to shadow catching plane
-     */
+    // Material applied to shadow catching plane
     this.shadowCatcherMaterial = new SoftShadowMaterial({
       map: this.progressiveLightMap2.texture,
     })
 
-    /**
-     * Create plane to catch shadows
-     */
+    // Create plane to catch shadows
     this.shadowCatcherMesh = new Mesh(new PlaneGeometry(size, size).rotateX(-Math.PI / 2), this.shadowCatcherMaterial)
     this.shadowCatcherMesh.position.y = 0.001 // avoid z-flicker
     this.shadowCatcherMesh.name = "shadowCatcherMesh"
     this.shadowCatcherMesh.receiveShadow = true
     this.progShadowGrp.add(this.shadowCatcherMesh)
 
-    /**
-     * Create plane helper to visualize shadow catcher size
-     * @private
-     */
+    // Create group to add assets to debug shadow catcher
     this.debugHelpersGroup = new Group()
     this.shadowCatcherMeshHelper = new PlaneHelper(new Plane(new Vector3(0, 1, 0), 0), size, 0xffff00)
 
-    /**
-     * Inject some spicy new logic into a standard Lambert material
-     * @private
-     */
+    //Inject some spicy new logic into a standard Lambert material
     this.targetMat = new MeshLambertMaterial({ fog: false })
-    /**
-     * Uniforms
-     * @private
-     */
     this.previousShadowMap = { value: this.progressiveLightMap1.texture }
-    /**
-     * Uniforms
-     * @private
-     */
     this.averagingWindow = { value: frames }
     this.targetMat.onBeforeCompile = (shader) => {
       // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
@@ -237,7 +147,6 @@ export class ProgressiveShadows {
   /**
    * This function renders each mesh one at a time into their respective surface maps
    * @param {Camera} camera Standard Rendering Camera
-   * @private
    */
   renderOnRenderTargets(camera) {
     this.prepare()
@@ -262,8 +171,8 @@ export class ProgressiveShadows {
     this.renderer.setRenderTarget(null)
   }
 
-  /** DEBUG
-   * Draw the lightmap in the main scene.  Call this after adding the objects to it.
+  /**
+   * Make Debug assets visible
    * @param {boolean} visible Whether the debug plane should be visible
    * @param {Vector3} position Where the debug plane should be drawn
    */
@@ -293,8 +202,7 @@ export class ProgressiveShadows {
   }
 
   /**
-   * randomise lights
-   * @private
+   * Randomise direction lights
    */
   randomiseLights() {
     const length = this.lightOrigin.position.length()
@@ -359,7 +267,7 @@ export class ProgressiveShadows {
 
   /**
    * Clear the shadow Target & update mesh list
-   *
+   * Call this once after all the models are loaded
    */
   clear() {
     console.log("clear")
@@ -421,41 +329,6 @@ export class ProgressiveShadows {
     this.progress = MathUtils.mapLinear(this.framesDone, 0, this.params.frames - 1, 0, 100)
 
     this.framesDone++
-  }
-
-  /**
-   * Pass Lil or Dat gui to create control folder
-   * @param {*} gui
-   */
-  addGui(gui) {
-    const folder = gui.addFolder("Progressive Shadows")
-    folder.open()
-
-    folder.add(this.params, "enabled")
-    folder.add(this.params, "frames", 10, 500, 1)
-    folder.add(this.params, "blendWindow", 1, 500, 1)
-    folder.add(this.params, "lightRadius", 0, 30, 0.1)
-    folder.add(this.params, "ambientWeight", 0, 1, 0.1)
-    folder.addColor(this.shadowCatcherMaterial, "color").listen()
-
-    folder.add(this.shadowCatcherMaterial, "blend", 0, 2, 0.01)
-    folder.add(this.shadowCatcherMaterial, "opacity", 0, 1, 0.01)
-
-    folder
-      .add(this.params, "alphaTest", 0, 1, 0.01)
-
-      .onChange((v) => {
-        this.shadowCatcherMaterial.alphaTest = v
-      })
-
-    folder.add(this.params, "debugHelpers").onChange((v) => {
-      this.showDebugHelpers(v)
-    })
-    folder.add(this, "recalculate")
-    folder.add(this, "clear")
-
-    folder.add(this, "progress", 0, 100, 1).listen().disable()
-    // folder.add(psm, "saveShadowsAsImage")
   }
 
   /**
@@ -611,3 +484,5 @@ const SoftShadowMaterial = shaderMaterial(
  * r3f Discard material which helps ignore materials when rendering
  */
 const DiscardMaterial = shaderMaterial({}, "void main() { }", "void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0); discard;  }")
+
+export { ProgressiveShadows }
