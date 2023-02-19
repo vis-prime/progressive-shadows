@@ -21,32 +21,21 @@ import {
   UniformsUtils,
 } from "three"
 
-const params = {
-  enable: true,
-  frames: 40,
-  blendWindow: 40,
-  lightRadius: 2,
-  ambientWeight: 0.5,
-  alphaTest: 0.98,
-  debugHelpers: false,
-}
-
 export class ProgressiveShadows {
   /**
    * Generate Progressive shadows
    * @param {WebGLRenderer} renderer For rendering shadows
    * @param {Scene} scene To get list of shadow mesh
-   * @param {Camera} camera For rendering to renderTarget
    * @param {Object} [userParams] Custom options
-   * @param {Number} [userParams.resolution = 1024] RenderTarget resolution
-   * @param {Number} [userParams.shadowMapRes = 512] DirectionLight ShadowMap resolution
-   * @param {Number} [userParams.lightCount = 8] DirectionLight count
-   * @param {Number} [userParams.size = 4] meshShadowCatcher size
-   * @param {Number} [userParams.frames = 100] Number of frames to run accumulate shadows
-   * @param {Number} [userParams.lightRadius = 2] DirectionLight spread , smaller values gives sharper shadows
-   * @param {Number} [userParams.ambientWeight = 0.5] Ratio between directional light vs ambient light
-   * @param {Number} [userParams.alphaTest = 0.95] Alpha test value to be performed on materialShadowCatcher
-   * @param {Number} [userParams.showHelpers = false] show line showHelpers to visualize all hidden objects & renderTarget
+   * @param {Number} [userParams.resolution] RenderTarget resolution
+   * @param {Number} [userParams.shadowMapRes] DirectionLight ShadowMap resolution
+   * @param {Number} [userParams.lightCount] DirectionLight count
+   * @param {Number} [userParams.size] meshShadowCatcher size
+   * @param {Number} [userParams.frames] Number of frames to run accumulate shadows
+   * @param {Number} [userParams.lightRadius] DirectionLight spread , smaller values gives sharper shadows
+   * @param {Number} [userParams.ambientWeight] Ratio between directional light vs ambient light
+   * @param {Number} [userParams.alphaTest] Alpha test value to be performed on materialShadowCatcher
+   * @param {Number} [userParams.showHelpers] show line showHelpers to visualize all hidden objects & renderTarget
    */
   constructor(
     renderer,
@@ -58,39 +47,44 @@ export class ProgressiveShadows {
       lightCount = 8,
       size = 4,
       frames = 100,
-      // blendWindow = 100,
+      blendWindow = 100,
       lightRadius = 2,
       ambientWeight = 0.5,
       alphaTest = 0.98,
     } = {}
   ) {
-    this.params = params
-    this.userScene = scene
+    this.params = {
+      enable: true,
+      frames,
+      blendWindow,
+      lightRadius,
+      ambientWeight,
+      alphaTest,
+      debugHelpers: false,
+      size,
+    }
+    this.scene = scene
     this.renderer = renderer
     this.res = resolution
     this.lightMapContainers = []
     this.compiled = false
-    this.scene = scene
-    this.scene.background = null
     this.tinyTarget = new WebGLRenderTarget(1, 1)
     this.buffer1Active = false
     this.firstUpdate = true
     this.warned = false
     this.dirLights = []
     this.dirLightsHelpers = []
-    this.lightCount = 8
-    this.shadowMapRes = 512
+
     this.killCompute = false
     this.isComputing = false
     this.clearColor = new Color()
     this.clearAlpha = 0
     this.progress = 0
-    this.shadowCatcherSize = size
     this.discardMaterial = new DiscardMaterial()
     this.lights = []
     this.meshes = []
     this.objectsToHide = []
-
+    this.framesDone = 0
     /**
      * light position control
      * @type {Group}
@@ -104,19 +98,19 @@ export class ProgressiveShadows {
     this.scene.add(this.lightGroup)
 
     // create 8 directional lights to speed up the convergence
-    for (let l = 0; l < this.lightCount; l++) {
-      const dirLight = new DirectionalLight(0xffffff, 1 / this.lightCount)
+    for (let l = 0; l < lightCount; l++) {
+      const dirLight = new DirectionalLight(0xffffff, 1 / lightCount)
       dirLight.name = "Dir. Light " + l
       dirLight.castShadow = true
       dirLight.shadow.bias = 0.001
       dirLight.shadow.camera.near = 0.1
       dirLight.shadow.camera.far = 50
-      dirLight.shadow.camera.right = this.shadowCatcherSize / 2
-      dirLight.shadow.camera.left = -this.shadowCatcherSize / 2
-      dirLight.shadow.camera.top = this.shadowCatcherSize / 2
-      dirLight.shadow.camera.bottom = -this.shadowCatcherSize / 2
-      dirLight.shadow.mapSize.width = this.shadowMapRes
-      dirLight.shadow.mapSize.height = this.shadowMapRes
+      dirLight.shadow.camera.right = size / 2
+      dirLight.shadow.camera.left = -size / 2
+      dirLight.shadow.camera.top = size / 2
+      dirLight.shadow.camera.bottom = -size / 2
+      dirLight.shadow.mapSize.width = shadowMapRes
+      dirLight.shadow.mapSize.height = shadowMapRes
       this.dirLights.push(dirLight)
       this.lightGroup.add(dirLight)
       const helpers = new DirectionalLightHelper(dirLight)
@@ -141,19 +135,16 @@ export class ProgressiveShadows {
     })
 
     // create plane to catch shadows
-    this.shadowCatcherMesh = new Mesh(
-      new PlaneGeometry(this.shadowCatcherSize, this.shadowCatcherSize).rotateX(-Math.PI / 2),
-      this.shadowCatcherMaterial
-    )
+    this.shadowCatcherMesh = new Mesh(new PlaneGeometry(size, size).rotateX(-Math.PI / 2), this.shadowCatcherMaterial)
     this.shadowCatcherMesh.position.y = 0.001 // avoid z-flicker
     // this.shadowCatcherMesh.renderOrder = 1000
 
     const plane = new Plane(new Vector3(0, 1, 0), 0)
-    this.shadowCatcherMeshHelper = new PlaneHelper(plane, this.shadowCatcherSize, 0xffff00)
+    this.shadowCatcherMeshHelper = new PlaneHelper(plane, size, 0xffff00)
 
     this.shadowCatcherMesh.name = "shadowCatcherMesh"
     this.shadowCatcherMesh.receiveShadow = true
-    this.userScene.add(this.shadowCatcherMesh)
+    this.scene.add(this.shadowCatcherMesh)
 
     this.lightMapContainers.push({
       basicMat: this.shadowCatcherMesh.material,
@@ -163,8 +154,7 @@ export class ProgressiveShadows {
     // Inject some spicy new logic into a standard phong material
     this.targetMat = new MeshLambertMaterial({ fog: false })
     this.previousShadowMap = { value: this.progressiveLightMap1.texture }
-    this.averagingWindow = { value: 100 }
-    this.targetMat.uniforms = {}
+    this.averagingWindow = { value: frames }
     this.targetMat.onBeforeCompile = (shader) => {
       // Vertex Shader: Set Vertex Positions to the Unwrapped UV Positions
       shader.vertexShader =
@@ -182,19 +172,9 @@ export class ProgressiveShadows {
       }`
 
       // Set the Previous Frame's Texture Buffer and Averaging Window
-      shader.uniforms.previousShadowMap = {
-        value: this.progressiveLightMap1.texture,
-      }
-      shader.uniforms.averagingWindow = { value: 100 }
-
-      this.targetMat.uniforms = shader.uniforms
-
-      // Set the new Shader to this
-      this.targetMat.userData.shader = shader
-      this.compiled = true
+      shader.uniforms.previousShadowMap = this.previousShadowMap
+      shader.uniforms.averagingWindow = this.averagingWindow
     }
-
-    this.framesDone = 0
   }
 
   /**
@@ -247,7 +227,8 @@ export class ProgressiveShadows {
     // }
 
     this.prepare()
-    this.targetMat.uniforms.averagingWindow = { value: params.blendWindow }
+    // this.targetMat.uniforms.averagingWindow = { value: this.params.blendWindow }
+    this.averagingWindow.value = this.params.frames
 
     // Ping-pong two surface buffers for reading/writing
     const activeMap = this.buffer1Active ? this.progressiveLightMap1 : this.progressiveLightMap2
@@ -255,7 +236,8 @@ export class ProgressiveShadows {
 
     // Render the object's surface maps
     this.renderer.setRenderTarget(activeMap)
-    this.targetMat.uniforms.previousShadowMap = { value: inactiveMap.texture }
+    // this.targetMat.uniforms.previousShadowMap = { value: inactiveMap.texture }
+    this.previousShadowMap.value = inactiveMap.texture
 
     this.buffer1Active = !this.buffer1Active
     this.renderer.render(this.scene, camera)
@@ -278,15 +260,6 @@ export class ProgressiveShadows {
    * @param {Vector3} position Where the debug plane should be drawn
    */
   showDebugHelpers(visible, position = undefined) {
-    if (this.lightMapContainers.length == 0) {
-      if (!this.warned) {
-        console.warn("Call this after adding the objects!")
-        this.warned = true
-      }
-
-      return
-    }
-
     if (this.debugMesh == null) {
       this.debugMesh = new Mesh(
         new PlaneGeometry(1, 1),
@@ -302,12 +275,12 @@ export class ProgressiveShadows {
       this.debugMesh.position.copy(position)
     }
     if (visible) {
-      this.userScene.add(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+      this.scene.add(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
       this.dirLightsHelpers.forEach((h) => {
         h.update()
       })
     } else {
-      this.userScene.remove(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+      this.scene.remove(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
     }
   }
 
@@ -321,11 +294,11 @@ export class ProgressiveShadows {
     for (let l = 0; l < this.dirLights.length; l++) {
       // Sometimes they will be sampled from the target direction
       // Sometimes they will be uniformly sampled from the upper hemisphere
-      if (Math.random() > params.ambientWeight) {
+      if (Math.random() > this.params.ambientWeight) {
         this.dirLights[l].position.set(
-          this.lightOrigin.position.x + MathUtils.randFloatSpread(params.lightRadius),
-          this.lightOrigin.position.y + MathUtils.randFloatSpread(params.lightRadius),
-          this.lightOrigin.position.z + MathUtils.randFloatSpread(params.lightRadius)
+          this.lightOrigin.position.x + MathUtils.randFloatSpread(this.params.lightRadius),
+          this.lightOrigin.position.y + MathUtils.randFloatSpread(this.params.lightRadius),
+          this.lightOrigin.position.z + MathUtils.randFloatSpread(this.params.lightRadius)
         )
       } else {
         // Uniform Hemispherical Surface Distribution for Ambient Occlusion
@@ -338,7 +311,7 @@ export class ProgressiveShadows {
         )
       }
 
-      if (params.debugHelpers) this.dirLightsHelpers[l].update()
+      if (this.params.debugHelpers) this.dirLightsHelpers[l].update()
     }
   }
 
@@ -346,7 +319,7 @@ export class ProgressiveShadows {
    * Trigger an update
    */
   async recalculate() {
-    if (!params.enable) return
+    if (!this.params.enable) return
     this.clear()
     this.framesDone = 0
   }
@@ -361,7 +334,7 @@ export class ProgressiveShadows {
 
     this.lightGroup.visible = true
     this.shadowCatcherMesh.material = this.targetMat
-    if (params.debugHelpers) this.showDebugHelpers(false)
+    if (this.params.debugHelpers) this.showDebugHelpers(false)
   }
 
   /**
@@ -373,7 +346,7 @@ export class ProgressiveShadows {
     this.objectsToHide.forEach((m) => (m.object.visible = m.visible))
     this.lightGroup.visible = false
     this.shadowCatcherMesh.material = this.shadowCatcherMaterial
-    if (params.debugHelpers) this.showDebugHelpers(true)
+    if (this.params.debugHelpers) this.showDebugHelpers(true)
   }
 
   /**
@@ -426,17 +399,17 @@ export class ProgressiveShadows {
    * Add this function to animate loop
    */
   update(camera) {
-    if (!params.enable || this.framesDone >= params.frames) return
+    if (!this.params.enable || this.framesDone >= this.params.frames) return
 
     this.shadowCatcherMesh.material.alphaTest = MathUtils.clamp(
-      MathUtils.mapLinear(this.framesDone, 2, params.frames - 1, 0, params.alphaTest),
+      MathUtils.mapLinear(this.framesDone, 2, this.params.frames - 1, 0, this.params.alphaTest),
       0,
       1
     )
 
     this.renderOnLightMap(camera)
     this.randomiseLights()
-    this.progress = MathUtils.mapLinear(this.framesDone, 0, params.frames - 1, 0, 100)
+    this.progress = MathUtils.mapLinear(this.framesDone, 0, this.params.frames - 1, 0, 100)
 
     this.framesDone++
   }
@@ -465,7 +438,7 @@ export class ProgressiveShadows {
     folder.add(this.params, "debugHelpers").onChange((v) => {
       this.showDebugHelpers(v)
     })
-    folder.add(this, "update")
+    folder.add(this, "recalculate")
     folder.add(this, "clear")
 
     folder.add(this, "progress", 0, 100, 1).listen().disable()
