@@ -196,7 +196,7 @@ function raycast() {
   postProcess.focus.copy(intersects[0].point)
 
   axesHelper.position.copy(postProcess.focus)
-  console.log(postProcess.focus)
+  // console.log(postProcess.focus)
   intersects.length = 0
 }
 
@@ -245,7 +245,7 @@ async function doPSM() {
   const bodyMat = rx7Car.material
   const hsl = {}
   bodyMat.color.getHSL(hsl)
-  console.log(hsl)
+  // console.log(hsl)
 
   const wheelSpeed = 0.01
   let additionalSpeed = 0
@@ -315,7 +315,7 @@ async function doPSM() {
   control2.attach(rx7Car)
 
   psm.updateMeshList()
-  console.log({ psm })
+  // console.log({ psm })
   const folder = gui.addFolder("Progressive Shadows")
   folder.open()
 
