@@ -14,6 +14,8 @@ Big thanks to drcmda/OxcaOa & r3f
 
 #### Init
 
+Class Files are available in `src` folder
+
 ```
 progressiveShadows = new ProgressiveShadows(renderer, scene, { size: 4 })
 ```
