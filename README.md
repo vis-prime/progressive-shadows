@@ -1,2 +1,45 @@
 # progressive-shadows
-progressive-shadows test
+
+A vanilla js implementation of AccumulativeShadows from react three fiber
+
+Based on
+
+- LightMapping example by Zalo https://threejs.org/examples/?q=prog#webgl_shadowmap_progressive
+- r3F drei's Accumulative Shadows https://github.com/pmndrs/drei/blob/master/src/core/AccumulativeShadows.tsx
+- Development Forum post https://discourse.threejs.org/t/progressive-lightmap-as-floor-shadow-catcher/41429
+
+Big thanks to drcmda/OxcaOa & r3f
+
+## API Reference
+
+#### Init
+
+```
+progressiveShadows = new ProgressiveShadows(renderer, scene, { size: 4 })
+```
+
+#### After models are loaded , call clear which traverses scene and finds shadow casting meshes:
+
+```
+progressiveShadows.clear()
+```
+
+#### In requestAnimationFrame loop add :
+
+```
+progressiveShadows.update(camera)
+```
+
+#### Gui for ProgressiveShadows
+
+`guiProgressiveShadows` function can help add gui quickly for testing values
+
+## Demo
+
+[Simple](url="https://vis-prime.github.io/progressive-shadows/?scene=simple")
+
+[RX7](url="https://vis-prime.github.io/progressive-shadows/?scene=rx7")
+
+## Authors
+
+- [@vis-prime](https://www.github.com/vis-prime)
