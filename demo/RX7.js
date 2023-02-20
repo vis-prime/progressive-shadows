@@ -24,8 +24,8 @@ import {
   Color,
 } from "three"
 import { PostProcess } from "./Postprocess"
-import { ProgressiveShadows } from "../src/ProgressiveShadows"
-import { guiProgressiveShadows } from "../src/GuiProgressiveShadows"
+import { ProgressiveShadows } from "../progressive-shadows/ProgressiveShadows"
+import { guiProgressiveShadows } from "../progressive-shadows/GuiProgressiveShadows"
 
 let stats,
   raf,

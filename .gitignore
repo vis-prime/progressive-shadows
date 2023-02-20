@@ -23,5 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 blend/
-
+*.tgz
 ReactAccumulativeShadows.tsx
