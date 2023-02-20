@@ -7,8 +7,8 @@ import { GUI } from "lil-gui"
 let url_string = window.location.href
 let url = new URL(url_string)
 const AllScenes = {
-  RX7: "rx7",
   Simple: "simple",
+  RX7: "rx7",
 }
 const params = {
   sceneName: url.searchParams.get("scene") || AllScenes.Simple,

@@ -91,8 +91,6 @@ class ProgressiveShadows {
       dirLight.shadow.mapSize.height = shadowMapRes
       this.dirLights.push(dirLight)
       this.lightGroup.add(dirLight)
-      const helpers = new DirectionalLightHelper(dirLight)
-      this.dirLightsHelpers.push(helpers)
     }
 
     // Create the Progressive LightMap Texture
@@ -114,7 +112,6 @@ class ProgressiveShadows {
 
     // Create group to add assets to debug shadow catcher
     this.debugHelpersGroup = new Group()
-    this.shadowCatcherMeshHelper = new PlaneHelper(new Plane(new Vector3(0, 1, 0), 0), size, 0xffff00)
 
     //Inject some spicy new logic into a standard Lambert material
     this.targetMat = new MeshLambertMaterial({ fog: false })
@@ -172,30 +169,34 @@ class ProgressiveShadows {
   /**
    * Make Debug assets visible
    * @param {boolean} visible Whether the debug plane should be visible
-   * @param {Vector3} position Where the debug plane should be drawn
    */
-  showDebugHelpers(visible, position = undefined) {
-    if (this.debugMesh == null) {
-      this.debugMesh = new Mesh(
-        new PlaneGeometry(2, 2).translate(0, 0.001, 0),
+  showDebugHelpers(visible) {
+    if (!this.debugHelpersGroup.children.length) {
+      const renderTargetDisplayHelper = new Mesh(
+        new PlaneGeometry(2, 2),
         new MeshBasicMaterial({
           map: this.progressiveLightMap1.texture,
           side: DoubleSide,
         })
       )
-      this.debugMesh.position.y = this.params.size / 2
+      renderTargetDisplayHelper.position.y = this.params.size / 2
+
+      for (const dirLight of this.dirLights) {
+        const helpers = new DirectionalLightHelper(dirLight)
+        this.dirLightsHelpers.push(helpers)
+      }
+
+      const shadowAreaHelper = new PlaneHelper(new Plane(new Vector3(0, 1, 0), 0.001), this.params.size, 0xffff00)
+      this.debugHelpersGroup.add(renderTargetDisplayHelper, shadowAreaHelper, ...this.dirLightsHelpers)
     }
 
-    if (position != undefined) {
-      this.debugMesh.position.copy(position)
-    }
     if (visible) {
-      this.progShadowGrp.add(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+      this.progShadowGrp.add(this.debugHelpersGroup)
       this.dirLightsHelpers.forEach((h) => {
         h.update()
       })
     } else {
-      this.progShadowGrp.remove(this.debugMesh, this.shadowCatcherMeshHelper, ...this.dirLightsHelpers)
+      this.progShadowGrp.remove(this.debugHelpersGroup)
     }
   }
 
