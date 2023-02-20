@@ -1,5 +1,0 @@
-# Ignore all files and directories in the root directory
-/*
-# Include only the files in the src directory
-!/src
-/src/*

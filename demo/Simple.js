@@ -24,8 +24,8 @@ import {
   Color,
   Vector3,
 } from "three"
-import { ProgressiveShadows } from "../progressive-shadows/ProgressiveShadows"
-import { guiProgressiveShadows } from "../progressive-shadows/GuiProgressiveShadows"
+import { ProgressiveShadows } from "../src/ProgressiveShadows"
+import { guiProgressiveShadows } from "../src/GuiProgressiveShadows"
 
 let stats,
   renderer,
