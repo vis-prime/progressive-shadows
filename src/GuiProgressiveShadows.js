@@ -5,15 +5,21 @@ import { ProgressiveShadows } from "./ProgressiveShadows"
  * @param {ProgressiveShadows} ps
  * @param {GUI} gui
  */
-export function addProgressiveShadowsGui(ps, gui) {
+export function guiProgressiveShadows(ps, gui) {
   const folder = gui.addFolder("Progressive Shadows")
   folder.open()
   folder.add(ps.params, "enabled")
-  folder.add(ps.params, "frames", 10, 500, 1)
-  folder.add(ps.params, "blendWindow", 1, 500, 1)
-  folder.add(ps.params, "lightRadius", 0, 30, 0.1)
-  folder.add(ps.params, "ambientWeight", 0, 1, 0.1)
-  folder.addColor(ps.shadowCatcherMaterial, "color").listen()
+  folder.add(ps.params, "frames", 10, 500, 1).onFinishChange(() => {
+    ps.recalculate()
+  })
+  folder.add(ps.params, "lightRadius", 0, 30, 0.1).onFinishChange(() => {
+    ps.recalculate()
+  })
+  folder.add(ps.params, "ambientWeight", 0, 1, 0.1).onFinishChange(() => {
+    ps.recalculate()
+  })
+
+  folder.addColor(ps.shadowCatcherMaterial, "color")
   folder.add(ps.shadowCatcherMaterial, "blend", 0, 2, 0.01)
   folder.add(ps.shadowCatcherMaterial, "opacity", 0, 1, 0.01)
   folder.add(ps.params, "alphaTest", 0, 1, 0.01).onChange((v) => {
@@ -25,5 +31,4 @@ export function addProgressiveShadowsGui(ps, gui) {
   folder.add(ps, "recalculate")
   folder.add(ps, "clear")
   folder.add(ps, "progress", 0, 100, 1).listen().disable()
-  // folder.add(psm, "saveShadowsAsImage")
 }

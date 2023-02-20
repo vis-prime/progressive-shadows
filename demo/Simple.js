@@ -25,8 +25,9 @@ import {
   Color,
   Vector3,
 } from "three"
-import { PSM } from "../ProgressiveShadowMap"
 import { MathUtils } from "three"
+import { ProgressiveShadows } from "../src/ProgressiveShadows"
+import { guiProgressiveShadows } from "../src/GuiProgressiveShadows"
 
 let stats,
   renderer,
@@ -36,12 +37,13 @@ let stats,
   controls,
   gui,
   /**
-   * @type {PSM}
+   * @type {ProgressiveShadows}
    */
-  psm,
+  progressiveShadows,
   pointer = new Vector2()
 
 const params = {
+  bgColor: new Color(),
   printCam: () => {},
 }
 const mainObjects = new Group()
@@ -97,36 +99,11 @@ export async function initSimple(mainGui) {
   controls.target.set(0, 0, 0)
   controls.target.set(0, 0, 0)
 
-  psm = new PSM(renderer, camera, scene, { shadowCatcherSize: 8 })
-  psm.lightOrigin.position.set(-3, 3, 3)
-  addPsmGUI()
-  // light position gizmo
-  const lightControl = new TransformControls(camera, renderer.domElement)
-  lightControl.name = "lightOrigin control"
-  lightControl.addEventListener("dragging-changed", (event) => {
-    controls.enabled = !event.value
-    if (!event.value) {
-      psm.update()
-    }
-  })
-  lightControl.size = 0.5
-
-  const size = psm.shadowCatcherSize / 2
-  const clampMin = new Vector3(-size, 0, -size),
-    clampMax = new Vector3(size, size, size)
-  lightControl.addEventListener("change", () => {
-    psm.lightOrigin.position.clamp(clampMin, clampMax)
-  })
-  lightControl.showY = false
-
-  scene.add(lightControl)
-  lightControl.attach(psm.lightOrigin)
-
   transformControls = new TransformControls(camera, renderer.domElement)
   transformControls.addEventListener("dragging-changed", (event) => {
     controls.enabled = !event.value
     if (!event.value) {
-      psm.update()
+      progressiveShadows.recalculate()
     }
   })
 
@@ -155,13 +132,11 @@ export async function initSimple(mainGui) {
 
   sceneGui.add(transformControls, "mode", ["translate", "rotate", "scale"])
   sceneGui.add(scene, "backgroundBlurriness", 0, 1, 0.01)
+  sceneGui.addColor(params, "bgColor").onChange(() => {
+    scene.background = params.bgColor
+  })
 
-  // folder.add(record, "recordFrames")
-  // sceneGui.add(params, "printCam").onChange(() => {
-  //   console.log(camera.position.toArray())
-  //   console.log(controls.target.toArray())
-  // })
-
+  initProgressiveShadows()
   await loadModels()
   animate()
 }
@@ -177,8 +152,8 @@ function render() {
   // Update the inertia on the orbit controls
   controls.update()
 
-  // Render Scene
-  psm.renderInAnimateLoop()
+  // Render Shadows
+  progressiveShadows.update(camera)
 
   renderer.render(scene, camera)
 }
@@ -222,6 +197,7 @@ async function loadModels() {
   sphere.position.set(2, 0, -1.5)
   mainObjects.add(sphere)
 
+  // cube
   const cube = new Mesh(
     new BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
     new MeshStandardMaterial({ color: getRandomHexColor(), roughness: 0.3, metalness: 0 })
@@ -232,6 +208,7 @@ async function loadModels() {
   cube.position.set(-1.5, 0, 1.5)
   mainObjects.add(cube)
 
+  // monkey
   const gltf = await gltfLoader.loadAsync(gltfUrl)
   const model = gltf.scene
   model.name = "suzanne"
@@ -242,120 +219,44 @@ async function loadModels() {
     }
   })
   mainObjects.add(model)
-  psm.updateMeshList()
+
+  // call this once all models are in scene
+  progressiveShadows.clear()
 }
 
-function addPsmGUI() {
-  const folder = gui.addFolder("Progressive Shadows")
-  folder.open()
+function initProgressiveShadows() {
+  const shadowCatcherSize = 8
+  progressiveShadows = new ProgressiveShadows(renderer, scene, { size: shadowCatcherSize })
+  // progressiveShadows.lightOrigin.position.set(-3, 3, 3)
 
-  folder.add(psm.params, "enable")
-  folder.add(psm.params, "frames", 10, 500, 1)
-  folder.add(psm.params, "blendWindow", 1, 500, 1)
-  folder.add(psm.params, "lightRadius", 0, 30, 0.1)
-  folder.add(psm.params, "ambientWeight", 0, 1, 0.1)
-  folder.addColor(psm.shadowCatcherMaterial, "color").listen()
+  guiProgressiveShadows(progressiveShadows, gui)
 
-  folder.add(psm.shadowCatcherMaterial, "blend", 0, 2, 0.01)
-  folder.add(psm.shadowCatcherMaterial, "opacity", 0, 1, 0.01)
-
-  folder
-    .add(psm.params, "alphaTest", 0, 1, 0.01)
-
-    .onChange((v) => {
-      psm.shadowCatcherMaterial.alphaTest = v
-    })
-
-  folder.add(psm.params, "debugHelpers").onChange((v) => {
-    psm.showDebugHelpers(v)
+  // light position transform controls
+  const lightControl = new TransformControls(camera, renderer.domElement)
+  lightControl.name = "lightOrigin control"
+  lightControl.addEventListener("dragging-changed", (event) => {
+    controls.enabled = !event.value
+    if (!event.value) {
+      progressiveShadows.recalculate()
+    }
   })
-  folder.add(psm, "update")
-  folder.add(psm, "clear")
+  lightControl.size = 0.5
 
-  folder.add(psm, "progress", 0, 100, 1).listen().disable()
-  // folder.add(psm, "saveShadowsAsImage")
+  // clamp light position inside
+  const clampSize = shadowCatcherSize / 2
+  const clampMin = new Vector3(-clampSize, 0, -clampSize),
+    clampMax = new Vector3(clampSize, clampSize, clampSize)
+
+  lightControl.addEventListener("change", () => {
+    progressiveShadows.lightOrigin.position.clamp(clampMin, clampMax)
+  })
+  lightControl.showY = false
+
+  scene.add(lightControl)
+  lightControl.attach(progressiveShadows.lightOrigin)
 }
 
 const color = new Color()
 function getRandomHexColor() {
   return "#" + color.setHSL(Math.random(), 0.5, 0.5).getHexString()
-}
-
-const record = { recordFrames }
-async function recordFrames() {
-  const fac = 2
-  const w = 1920 * fac,
-    h = 1080 * fac
-
-  // const w = window.innerWidth,
-  // h = window.innerHeight
-  params.autoResize = false
-  cancelAnimationFrame(raf)
-  const fps = 30
-  const duration = 8
-  const frames = duration * fps
-  controls.autoRotate = true
-  renderer.setPixelRatio(1)
-  const distance = controls.getDistance()
-
-  camera.aspect = w / h
-  camera.updateProjectionMatrix()
-
-  let zipCounter = 0
-  const zipLimit = 20
-  let blobDict = {}
-  let zipCount = 0
-
-  const zipBlobDict = async () => {
-    const files = {}
-
-    for (const [name, blob] of Object.entries(blobDict)) {
-      files[name] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }]
-    }
-
-    const zip = new Blob([fflate.zipSync(files)])
-    await save(zip, zipCount + ".zip")
-
-    zipCount++
-  }
-
-  for (let i = 0; i < frames; i++) {
-    const tt = MathUtils.mapLinear(i, 0, frames - 1, 0, Math.PI * 2)
-    camera.position.set(Math.sin(tt) * distance, camera.position.y, Math.cos(tt) * distance)
-
-    renderer.setSize(w, h)
-
-    console.log(i, "/", frames)
-
-    render()
-
-    // await sleep(10)
-    blobDict["img_" + i + ".png"] = await new Promise((resolve) => renderer.domElement.toBlob(resolve, "image/png"))
-    if (zipCounter === zipLimit) {
-      await zipBlobDict()
-      blobDict = {}
-      zipCounter = 0
-    }
-    zipCounter++
-  }
-
-  // save leftover files
-  if (Object.keys(blobDict).length) {
-    console.log("saving leftover")
-    await zipBlobDict()
-    blobDict = {}
-  }
-}
-
-const link = document.createElement("a")
-
-async function save(blob, filename) {
-  console.log("Save", filename)
-  if (link.href) {
-    URL.revokeObjectURL(link.href)
-  }
-
-  link.href = URL.createObjectURL(blob)
-  link.download = filename
-  link.dispatchEvent(new MouseEvent("click"))
 }

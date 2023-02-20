@@ -27,11 +27,10 @@ class ProgressiveShadows {
     {
       resolution = 1024,
       shadowMapRes = 512,
-      shadowBias = 0,
+      shadowBias = 0.001,
       lightCount = 8,
       size = 4,
-      frames = 100,
-      blendWindow = 100,
+      frames = 40,
       lightRadius = 2,
       ambientWeight = 0.5,
       alphaTest = 0.98,
@@ -40,7 +39,6 @@ class ProgressiveShadows {
     this.params = {
       enabled: true,
       frames,
-      blendWindow,
       lightRadius,
       ambientWeight,
       alphaTest,
@@ -270,8 +268,6 @@ class ProgressiveShadows {
    * Call this once after all the models are loaded
    */
   clear() {
-    console.log("clear")
-
     this.renderer.getClearColor(this.clearColor)
     this.clearAlpha = this.renderer.getClearAlpha()
     this.renderer.setClearColor("black", 1) // setting to any other color/alpha will decrease shadow's impact when accumulating
@@ -330,79 +326,6 @@ class ProgressiveShadows {
 
     this.framesDone++
   }
-
-  /**
-   * Not working
-   * @returns
-   */
-  saveShadowsAsImage() {
-    return new Promise(async (resolve) => {
-      console.log(this.progressiveLightMap1)
-      const imageArray = new Uint8Array(this.progressiveLightMap1.width * this.progressiveLightMap1.height * 4)
-      this.renderer.readRenderTargetPixels(
-        this.progressiveLightMap1,
-        0,
-        0,
-        this.progressiveLightMap1.width,
-        this.progressiveLightMap1.height,
-        imageArray
-      )
-      console.log({ imageArray })
-      var link = document.createElement("a")
-      link.download = "render" + ".png"
-
-      let pixelHasValue = false
-      for (let index = 0; index < imageArray.length; index++) {
-        if (imageArray[index] !== 0) {
-          pixelHasValue = true
-          console.log("Pixel has value", imageArray[index])
-          break
-        }
-      }
-
-      if (!pixelHasValue) {
-        return
-      }
-
-      // render the equirectangular image
-      const imageData = new ImageData(new Uint8ClampedArray(imageArray), this.progressiveLightMap1.width, this.progressiveLightMap1.height)
-      console.log({ imageData })
-
-      // paste image on canvas
-      const canvas = document.createElement("canvas")
-      canvas.width = imageData.width
-      canvas.height = imageData.height
-      const ctx = canvas.getContext("2d")
-      ctx.putImageData(imageData, 0, 0)
-
-      // create image blob from canvas
-
-      // download image file to system
-      link.href = canvas.toDataURL("image/png")
-
-      link.target = "_blank"
-      link.click()
-
-      resolve()
-    })
-  }
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-const link = document.createElement("a")
-
-async function save(blob, filename) {
-  console.log("Save", filename)
-  if (link.href) {
-    URL.revokeObjectURL(link.href)
-  }
-
-  link.href = URL.createObjectURL(blob)
-  link.download = filename
-  link.dispatchEvent(new MouseEvent("click"))
 }
 
 /**
