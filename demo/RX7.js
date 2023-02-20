@@ -66,7 +66,7 @@ draco.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/")
 gltfLoader.setDRACOLoader(draco)
 const raycaster = new Raycaster()
 
-const intersects = []
+const intersects = [] //raycast
 
 const mainObjects = new Group()
 

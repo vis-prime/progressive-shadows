@@ -1,7 +1,7 @@
 import "./style.css"
 import { initRx7 } from "./demo/RX7"
 import { initSimple } from "./demo/Simple"
-import { version, name } from "./package.json"
+import { version } from "./package.json"
 import { GUI } from "lil-gui"
 
 let url_string = window.location.href

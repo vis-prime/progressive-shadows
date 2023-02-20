@@ -6,7 +6,6 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { TransformControls } from "three/examples/jsm/controls/TransformControls"
 import hdriUrl from "/public/aristea_wreck_1k.hdr?url"
-import * as fflate from "three/examples/jsm/libs/fflate.module"
 
 import {
   ACESFilmicToneMapping,
@@ -25,7 +24,6 @@ import {
   Color,
   Vector3,
 } from "three"
-import { MathUtils } from "three"
 import { ProgressiveShadows } from "../src/ProgressiveShadows"
 import { guiProgressiveShadows } from "../src/GuiProgressiveShadows"
 
@@ -55,7 +53,8 @@ let transformControls
 draco.setDecoderPath("https://www.gstatic.com/draco/v1/decoders/")
 gltfLoader.setDRACOLoader(draco)
 const raycaster = new Raycaster()
-const intersects = []
+const intersects = [] //raycast
+
 let sceneGui
 
 export async function initSimple(mainGui) {
@@ -227,7 +226,7 @@ async function loadModels() {
 function initProgressiveShadows() {
   const shadowCatcherSize = 8
   progressiveShadows = new ProgressiveShadows(renderer, scene, { size: shadowCatcherSize })
-  // progressiveShadows.lightOrigin.position.set(-3, 3, 3)
+  progressiveShadows.lightOrigin.position.set(-3, 3, 3)
 
   guiProgressiveShadows(progressiveShadows, gui)
 

@@ -177,13 +177,13 @@ class ProgressiveShadows {
   showDebugHelpers(visible, position = undefined) {
     if (this.debugMesh == null) {
       this.debugMesh = new Mesh(
-        new PlaneGeometry(1, 1),
+        new PlaneGeometry(2, 2).translate(0, 0.001, 0),
         new MeshBasicMaterial({
           map: this.progressiveLightMap1.texture,
           side: DoubleSide,
         })
       )
-      this.debugMesh.position.y = 3
+      this.debugMesh.position.y = this.params.size / 2
     }
 
     if (position != undefined) {
