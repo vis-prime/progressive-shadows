@@ -20,6 +20,12 @@ progressiveShadows = new ProgressiveShadows(renderer, scene, { size: 4 })
 
 #### After models are loaded , call clear which traverses scene and finds shadow casting meshes:
 
+#### Move the object progressiveShadows.lightOrigin to control shadow direction:
+
+```
+progressiveShadows.lightOrigin.position.set(5,5,5)
+```
+
 ```
 progressiveShadows.clear()
 ```
@@ -39,7 +45,3 @@ progressiveShadows.update(camera)
 [Simple](https://vis-prime.github.io/progressive-shadows/?scene=simple)
 
 [RX7](https://vis-prime.github.io/progressive-shadows/?scene=rx7)
-
-## Authors
-
-- [@vis-prime](https://www.github.com/vis-prime)
