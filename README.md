@@ -36,9 +36,9 @@ progressiveShadows.update(camera)
 
 ## Demo
 
-[Simple](url="https://vis-prime.github.io/progressive-shadows/?scene=simple")
+[Simple](!url="https://vis-prime.github.io/progressive-shadows/?scene=simple")
 
-[RX7](url="https://vis-prime.github.io/progressive-shadows/?scene=rx7")
+[RX7](!url="https://vis-prime.github.io/progressive-shadows/?scene=rx7")
 
 ## Authors
 
