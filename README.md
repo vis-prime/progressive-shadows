@@ -1,6 +1,6 @@
 # progressive-shadows
 
-A vanilla js implementation of AccumulativeShadows from react three fiber
+A progressive/accumulative shadow catcher for three js which is a vanilla js implementation of AccumulativeShadows from react three fiber
 
 Based on
 
@@ -8,13 +8,13 @@ Based on
 - r3F drei's Accumulative Shadows https://github.com/pmndrs/drei/blob/master/src/core/AccumulativeShadows.tsx
 - Development Forum post https://discourse.threejs.org/t/progressive-lightmap-as-floor-shadow-catcher/41429
 
-Big thanks to drcmda/OxcaOa & r3f
+Big thanks to drcmda/OxcaOa , r3f and three js forums
 
 ## API Reference
 
 #### Init
 
-Class Files are available in `progressive-shadows` folder
+Class Files are available in `src` folder
 
 ```
 progressiveShadows = new ProgressiveShadows(renderer, scene, { size: 4 })
