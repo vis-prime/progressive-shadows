@@ -292,7 +292,7 @@ class ProgressiveShadows {
     this.meshes.length = 0
     this.objectsToHide.length = 0
     this.scene.traverse((object) => {
-      if (object.isMesh && object !== this.shadowCatcherMesh) {
+      if (object.geometry && object !== this.shadowCatcherMesh) {
         if (object.castShadow) {
           this.meshes.push({ object, material: object.material })
         } else {
