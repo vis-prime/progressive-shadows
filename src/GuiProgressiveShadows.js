@@ -79,7 +79,7 @@ function saveShadowsAsImage(ps) {
     const alphaValue = invertedValue * alphaScale
     pixels[i + 3] = alphaValue
     color.setRGB(diffuse * shadowColor.r * blend, diffuse * shadowColor.g * blend, diffuse * shadowColor.b * blend)
-    color.convertLinearToSRGB()
+    // color.convertLinearToSRGB()
     color.toArray(pixels, i)
   }
 
