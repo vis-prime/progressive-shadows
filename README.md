@@ -12,9 +12,9 @@ Big thanks to drcmda/OxcaOa , r3f and three js forums
 
 ## API Reference
 
-#### Init
-
 Class Files are available in `src` folder
+
+#### Init
 
 ```
 progressiveShadows = new ProgressiveShadows(renderer, scene, { size: 4 })
@@ -22,14 +22,14 @@ progressiveShadows = new ProgressiveShadows(renderer, scene, { size: 4 })
 
 #### After models are loaded , call clear which traverses scene and finds shadow casting meshes:
 
+```
+progressiveShadows.clear()
+```
+
 #### Move the object progressiveShadows.lightOrigin to control shadow direction:
 
 ```
 progressiveShadows.lightOrigin.position.set(5,5,5)
-```
-
-```
-progressiveShadows.clear()
 ```
 
 #### In requestAnimationFrame loop add :
@@ -40,7 +40,7 @@ progressiveShadows.update(camera)
 
 #### Gui for ProgressiveShadows
 
-`guiProgressiveShadows` function can help add gui quickly for testing values
+`guiProgressiveShadows` function can help add gui quickly for testing
 
 ## Demo
 
