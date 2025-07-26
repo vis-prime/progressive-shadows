@@ -1,3 +1,8 @@
+NOTE: 
+Updated version available here 
+https://github.com/pmndrs/drei-vanilla?tab=readme-ov-file#accumulativeshadows
+
+
 # progressive-shadows
 
 A progressive/accumulative shadow catcher for three js which is a vanilla js implementation of AccumulativeShadows from react three fiber
